@@ -1,0 +1,10 @@
+# CMake generation dependency list for this directory.
+C:/Users/david/Desktop/aliasing/assimp/contrib/zlib/CMakeLists.txt
+C:/Users/david/Desktop/aliasing/assimp/contrib/zlib/zconf.h.cmakein
+C:/Users/david/Desktop/aliasing/assimp/contrib/zlib/zlib.pc.cmakein
+C:/Users/david/Desktop/aliasing/cmake-3.28.1-windows-x86_64/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake
+C:/Users/david/Desktop/aliasing/cmake-3.28.1-windows-x86_64/share/cmake-3.28/Modules/CheckFunctionExists.cmake
+C:/Users/david/Desktop/aliasing/cmake-3.28.1-windows-x86_64/share/cmake-3.28/Modules/CheckIncludeFile.cmake
+C:/Users/david/Desktop/aliasing/cmake-3.28.1-windows-x86_64/share/cmake-3.28/Modules/CheckIncludeFileCXX.cmake
+C:/Users/david/Desktop/aliasing/cmake-3.28.1-windows-x86_64/share/cmake-3.28/Modules/CheckTypeSize.cmake
+C:/Users/david/Desktop/aliasing/cmake-3.28.1-windows-x86_64/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake

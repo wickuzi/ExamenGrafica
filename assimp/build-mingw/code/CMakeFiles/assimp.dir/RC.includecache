@@ -1,0 +1,18 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+C:/Users/david/Desktop/aliasing/assimp/code/res/assimp.rc
+assimp/revision.h
+-
+winresrc.h
+C:/Users/david/Desktop/aliasing/assimp/code/res/winresrc.h
+winres.h
+C:/Users/david/Desktop/aliasing/assimp/code/res/winres.h
+
+include/assimp/revision.h
+

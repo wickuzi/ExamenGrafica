@@ -1,0 +1,13 @@
+C:/Users/david/Desktop/aliasing/assimp/CMakeFiles/uninstall.dir
+C:/Users/david/Desktop/aliasing/assimp/CMakeFiles/UpdateAssimpLibsDebugSymbolsAndDLLs.dir
+C:/Users/david/Desktop/aliasing/assimp/CMakeFiles/INSTALL.dir
+C:/Users/david/Desktop/aliasing/assimp/CMakeFiles/ALL_BUILD.dir
+C:/Users/david/Desktop/aliasing/assimp/CMakeFiles/ZERO_CHECK.dir
+C:/Users/david/Desktop/aliasing/assimp/contrib/zlib/CMakeFiles/zlibstatic.dir
+C:/Users/david/Desktop/aliasing/assimp/contrib/zlib/CMakeFiles/INSTALL.dir
+C:/Users/david/Desktop/aliasing/assimp/contrib/zlib/CMakeFiles/ALL_BUILD.dir
+C:/Users/david/Desktop/aliasing/assimp/code/CMakeFiles/assimp.dir
+C:/Users/david/Desktop/aliasing/assimp/code/CMakeFiles/INSTALL.dir
+C:/Users/david/Desktop/aliasing/assimp/test/CMakeFiles/unit.dir
+C:/Users/david/Desktop/aliasing/assimp/test/CMakeFiles/INSTALL.dir
+C:/Users/david/Desktop/aliasing/assimp/test/headercheck/CMakeFiles/INSTALL.dir
