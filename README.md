@@ -1,6 +1,6 @@
-# OpenGL Aliasing
+# Paseo Virtual Silent Hill 2 con OpenGL
 
-Proyecto de graficacion en **C++ + OpenGL** enfocado en una escena 3D con James Sunderland, skybox, luces dinamicas y carga de modelos mediante Assimp. Esta configurado para compilarse y ejecutarse desde **Visual Studio Code en Windows**.
+Proyecto de la materia Programación Gráfica. Paseo Virtual basado en el videojuego clásico **Silent Hill 2**, realizado en OpenGL. Esta configurado para compilarse y ejecutarse desde **Visual Studio Code en Windows**.
 
 ![C++](https://img.shields.io/badge/C%2B%2B-17-blue)
 ![OpenGL](https://img.shields.io/badge/OpenGL-3.3-green)
