@@ -42,6 +42,7 @@ foreach ($dir in @('models', 'skybox')) {
     $source = Join-Path $root $dir
     $target = Join-Path $dist $dir
     if (Test-Path $source) {
+        if (Test-Path $target) { Remove-Item $target -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $target | Out-Null
         Copy-Item (Join-Path $source '*') $target -Recurse -Force
     } else {

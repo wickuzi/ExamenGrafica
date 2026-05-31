@@ -3,6 +3,7 @@ build/
 dist/
 out/
 build-vs/
+cmake-3.28.1-windows-x86_64/
 
 # IDE caches
 .vs/

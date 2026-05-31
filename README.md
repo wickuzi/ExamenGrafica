@@ -24,8 +24,10 @@ Proyecto de la materia Programación Gráfica. Paseo Virtual basado en el videoj
 - Renderizado 3D con OpenGL.
 - Modelo principal: **James Sunderland**.
 - Skybox cubico con seis texturas.
+- Fog gris verdosa y tono visual inspirado en Silent Hill 2.
 - Iluminacion Phong con luz direccional y luces puntuales.
-- Carga de modelos `.glb` mediante Assimp.
+- Camara en tercera persona con rotacion por mouse.
+- Carga de modelos `.glb` y `.dae` mediante Assimp.
 - Scripts de build para PowerShell y Bash.
 - Configuracion lista para VS Code.
 - Empaquetado portable para ejecutar en otra laptop.
@@ -36,7 +38,8 @@ Proyecto de la materia Programación Gráfica. Paseo Virtual basado en el videoj
 .
 |-- Resource Files/        # Codigo fuente, shaders y headers locales
 |-- models/
-|   `-- james/             # Modelo 3D de James Sunderland
+|   |-- james/             # Modelo 3D de James Sunderland
+|   `-- map/               # Escenario Collada y texturas
 |-- skybox/                # Texturas del cubemap
 |-- glad/                  # Loader de OpenGL
 |-- glm/                   # Libreria matematica
@@ -184,6 +187,17 @@ cd .\build\bin
 ```
 
 El programa debe ejecutarse desde `build/bin` porque carga shaders, modelo y skybox usando rutas relativas al `.exe`.
+
+## Controles
+
+| Control | Accion |
+| --- | --- |
+| `W`, `A`, `S`, `D` | Mover a James por la escena. |
+| Mouse | Rotar la camara en tercera persona. |
+| Rueda del mouse | Acercar o alejar la camara. |
+| `Shift` | Movimiento mas rapido. |
+| `I`, `J`, `K`, `L`, `U`, `O` | Ajustar la luz blanca de prueba. |
+| `Esc` | Cerrar la ventana. |
 
 ## Crear Version Portable
 

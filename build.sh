@@ -24,6 +24,7 @@ cp glfw3.dll glew32.dll build/bin/
 cp "assimp/build-mingw/bin/libassimp-6.dll" build/bin/ 2>/dev/null || echo "Warning: libassimp-6.dll not found"
 mkdir -p "build/bin/Resource Files"
 cp "Resource Files"/*.vs "Resource Files"/*.fs "build/bin/Resource Files/"
+rm -rf "build/bin/skybox" "build/bin/models"
 cp -r skybox build/bin/ 2>/dev/null || true
 cp -r models build/bin/ 2>/dev/null || true
 

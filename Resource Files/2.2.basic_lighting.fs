@@ -6,8 +6,18 @@ in vec3 Normal;
 in vec2 TexCoord;
 
 uniform vec3 objectColor;
+uniform float objectAlpha;
 uniform vec3 viewPos;
 uniform sampler2D texture1;
+uniform float alphaCutoff;
+uniform float emissiveStrength;
+
+// Silent Hill style fog and grade
+uniform vec3 fogColor;
+uniform float fogDensity;
+uniform float fogStart;
+uniform float fogEnd;
+uniform int fogEnabled;
 
 // material
 uniform float material_shininess;
@@ -94,7 +104,27 @@ void main()
     for (int i = 0; i < numPointLights; ++i)
         resultLighting += CalcPointLight(pointLights[i], norm, FragPos, viewDir);
 
-    vec3 texColor = texture(texture1, TexCoord).rgb;
-    vec3 result = resultLighting * texColor * objectColor;
+    vec4 texSample = texture(texture1, TexCoord);
+    float finalAlpha = texSample.a * objectAlpha;
+    if (finalAlpha < alphaCutoff)
+        discard;
+
+    vec3 baseColor = texSample.rgb * objectColor;
+    vec3 result = resultLighting * baseColor;
+    result += baseColor * emissiveStrength;
+
+    // Light desaturation keeps the Silent Hill mood without hiding the map textures.
+    float gray = dot(result, vec3(0.299, 0.587, 0.114));
+    result = mix(vec3(gray), result, 0.72);
+    result *= vec3(1.02, 1.02, 0.94);
+
+    if (fogEnabled == 1) {
+        float distanceToCamera = length(viewPos - FragPos);
+        float linearFog = clamp((fogEnd - distanceToCamera) / (fogEnd - fogStart), 0.0, 1.0);
+        float expFog = exp(-fogDensity * distanceToCamera);
+        float fogFactor = clamp(min(linearFog, expFog), 0.0, 1.0);
+        result = mix(fogColor, result, fogFactor);
+    }
+
     FragColor = vec4(result, 1.0);
 }
