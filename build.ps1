@@ -96,8 +96,10 @@ New-Item -ItemType Directory -Force -Path 'build/bin/Resource Files' | Out-Null
 Copy-Item 'Resource Files/*.vs', 'Resource Files/*.fs' 'build/bin/Resource Files/' -Force
 if (Test-Path 'build/bin/skybox') { Remove-Item 'build/bin/skybox' -Recurse -Force }
 if (Test-Path 'build/bin/models') { Remove-Item 'build/bin/models' -Recurse -Force }
+if (Test-Path 'build/bin/sounds') { Remove-Item 'build/bin/sounds' -Recurse -Force }
 if (Test-Path 'skybox') { Copy-Item 'skybox' 'build/bin/' -Recurse -Force }
 if (Test-Path 'models') { Copy-Item 'models' 'build/bin/' -Recurse -Force }
+if (Test-Path 'sounds') { Copy-Item 'sounds' 'build/bin/' -Recurse -Force }
 
 Write-Host 'Done! Executable: build/bin/opengl.exe'
 Get-Item 'build/bin/opengl.exe' | Format-List FullName, Length, LastWriteTime

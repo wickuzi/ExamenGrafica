@@ -66,6 +66,11 @@ add_custom_command(TARGET opengl POST_BUILD
   "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/models"
 )
 add_custom_command(TARGET opengl POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  "${CMAKE_CURRENT_SOURCE_DIR}/sounds"
+  "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sounds"
+)
+add_custom_command(TARGET opengl POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/glfw3.dll"
 )
 add_custom_command(TARGET opengl POST_BUILD

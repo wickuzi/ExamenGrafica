@@ -24,6 +24,7 @@
 #include <array>
 #include <unordered_map>
 #include <windows.h>
+#include <mmsystem.h>
 #include <gdiplus.h>
 #include <cfloat>
 
@@ -47,7 +48,13 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 void updateThirdPersonCamera();
+void initAudio();
+void updateFootstepAudio();
+void shutdownAudio();
+bool audioCommand(const std::string& command);
 unsigned int loadTextureFromJpeg(const wchar_t* path);
+struct HudTexture;
+HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float fontSize, int width, int height, const Gdiplus::Color& color);
 unsigned int loadTextureFromFile(const std::string &path, const std::string &directory, std::map<std::string,unsigned int> &loaded);
 unsigned int getWhiteTexture();
 unsigned int loadMaterialTexture(aiMaterial* material, const aiScene* scene, const std::string& directory, std::map<std::string,unsigned int>& loaded);
@@ -113,6 +120,11 @@ struct WalkTriangle {
     float minX, maxX, minZ, maxZ;
     float area;
 };
+struct HudTexture {
+    unsigned int texture=0;
+    int width=0;
+    int height=0;
+};
 glm::mat4 aiToGlm(const aiMatrix4x4& from);
 void processNode(const aiScene* scene, aiNode* node, const glm::mat4& parentTransform, const std::string &directory, std::vector<MeshData> &meshes, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string,unsigned int> &loaded, std::unordered_map<std::string, BoneInfo>* boneInfoMap, int* boneCounter);
 MeshData processMesh(aiMesh* mesh, const aiScene* scene, const glm::mat4& transform, const std::string &directory, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string,unsigned int> &loaded, std::unordered_map<std::string, BoneInfo>* boneInfoMap, int* boneCounter);
@@ -156,7 +168,12 @@ float playerYaw = 180.0f;
 std::vector<WalkTriangle> walkTriangles;
 bool jumpRequested = false;
 bool spaceWasPressed = false;
+bool eWasPressed = false;
+bool saveMenuOpen = false;
 bool turnAnimationActive = false;
+bool playerIsMoving = false;
+bool footstepsPlaying = false;
+float footstepTimer = 0.0f;
 
 // timing
 float deltaTime = 0.0f;	
@@ -166,6 +183,7 @@ const glm::vec3 SAVE_POINT_POSITION = glm::vec3(4.5f, 1.75f, 1.5f);
 const glm::vec3 SAVE_POINT_WALL_NORMAL = glm::vec3(1.0f, 0.0f, 0.0f);
 glm::vec3 savePointPosition = SAVE_POINT_POSITION;
 glm::vec3 savePointNormal = SAVE_POINT_WALL_NORMAL;
+const float SAVE_POINT_INTERACT_RADIUS = 1.45f;
 const glm::vec3 FOG_COLOR(0.72f, 0.73f, 0.66f);
 const float JAMES_FBX_SKIN_SCALE = 0.01f;
 const glm::vec3 JAMES_FBX_SKIN_OFFSET(0.0f, -0.90f, 0.0f);
@@ -228,6 +246,60 @@ unsigned int loadTextureFromJpeg(const wchar_t* path)
     glGenerateMipmap(GL_TEXTURE_2D);
 
     return texture;
+}
+
+HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float fontSize, int width, int height, const Gdiplus::Color& color)
+{
+    HudTexture result{};
+    Gdiplus::Bitmap bitmap(width, height, PixelFormat32bppARGB);
+    Gdiplus::Graphics graphics(&bitmap);
+    graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+    graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
+
+    Gdiplus::FontFamily requestedFamily(fontName);
+    const Gdiplus::FontFamily* family = requestedFamily.IsAvailable()
+        ? &requestedFamily
+        : Gdiplus::FontFamily::GenericSerif();
+    Gdiplus::Font font(family, fontSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    Gdiplus::SolidBrush brush(color);
+    Gdiplus::StringFormat format;
+    format.SetAlignment(Gdiplus::StringAlignmentNear);
+    format.SetLineAlignment(Gdiplus::StringAlignmentNear);
+    Gdiplus::RectF layout(0.0f, 0.0f, static_cast<Gdiplus::REAL>(width), static_cast<Gdiplus::REAL>(height));
+    graphics.DrawString(text, -1, &font, layout, &format, &brush);
+
+    Gdiplus::Rect rect(0, 0, width, height);
+    Gdiplus::BitmapData bitmapData{};
+    if (bitmap.LockBits(&rect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &bitmapData) != Gdiplus::Ok)
+        return result;
+
+    std::vector<unsigned char> pixels(width * height * 4);
+    auto* srcBase = static_cast<unsigned char*>(bitmapData.Scan0);
+    for (int y = 0; y < height; ++y) {
+        const unsigned char* srcRow = srcBase + y * bitmapData.Stride;
+        unsigned char* dstRow = pixels.data() + y * width * 4;
+        for (int x = 0; x < width; ++x) {
+            const unsigned char* src = srcRow + x * 4;
+            unsigned char* dst = dstRow + x * 4;
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = src[3];
+        }
+    }
+    bitmap.UnlockBits(&bitmapData);
+
+    glGenTextures(1, &result.texture);
+    glBindTexture(GL_TEXTURE_2D, result.texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    result.width = width;
+    result.height = height;
+    return result;
 }
 
 int main()
@@ -322,9 +394,9 @@ int main()
     lightingShader.setFloat("material_specularStrength", 0.12f);
     lightingShader.setFloat("material_ambientStrength", 0.48f);
     lightingShader.setVec3("fogColor", FOG_COLOR);
-    lightingShader.setFloat("fogDensity", 0.095f);
+    lightingShader.setFloat("fogDensity", 0.108f);
     lightingShader.setFloat("fogStart", 2.6f);
-    lightingShader.setFloat("fogEnd", 26.0f);
+    lightingShader.setFloat("fogEnd", 23.0f);
     lightingShader.setInt("fogEnabled", 1);
     lightingShader.setFloat("objectAlpha", 1.0f);
     lightingShader.setFloat("alphaCutoff", 0.38f);
@@ -336,6 +408,29 @@ int main()
     unsigned int saveDiskVAO = 0;
     unsigned int saveDiskIndexCount = 0;
     createDisk(saveDiskVAO, saveDiskIndexCount);
+    unsigned int hudQuadVAO = 0;
+    unsigned int hudQuadIndexCount = 0;
+    createQuad(hudQuadVAO, hudQuadIndexCount);
+    HudTexture saveTitleText = createTextTexture(L"SAVE GAME", L"Georgia", 42.0f, 400, 72, Gdiplus::Color(245, 245, 238, 228));
+    HudTexture saveEmptyText = createTextTexture(L"EMPTY SLOT", L"Georgia", 24.0f, 320, 48, Gdiplus::Color(205, 222, 216, 210));
+    HudTexture saveLocationText = createTextTexture(L"SILENT HILL ROAD", L"Georgia", 23.0f, 430, 64, Gdiplus::Color(220, 218, 210, 212));
+    HudTexture saveTimeText = createTextTexture(L"19:42    2024/09/06    10:29", L"Georgia", 24.0f, 490, 48, Gdiplus::Color(210, 208, 200, 180));
+    HudTexture savePromptText = createTextTexture(L"PRESS E TO RETURN", L"Georgia", 19.0f, 300, 40, Gdiplus::Color(230, 218, 210, 190));
+    HudTexture saveInteractText = createTextTexture(L"PRESS E", L"Georgia", 20.0f, 112, 34, Gdiplus::Color(245, 230, 220, 218));
+    initAudio();
+
+    auto drawHudQuad = [&](unsigned int texture, float x, float y, float width, float height, const glm::vec3& color, float alpha) {
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(x + width * 0.5f, y + height * 0.5f, 0.0f));
+        model = glm::scale(model, glm::vec3(width, height, 1.0f));
+        lightingShader.setMat4("model", model);
+        lightingShader.setVec3("objectColor", color);
+        lightingShader.setFloat("objectAlpha", alpha);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glBindVertexArray(hudQuadVAO);
+        glDrawElements(GL_TRIANGLES, (GLsizei)hudQuadIndexCount, GL_UNSIGNED_INT, 0);
+    };
 
     // Load James model
     std::string jamesModelPath;
@@ -499,6 +594,7 @@ int main()
         // input
         // -----
         processInput(window);
+        updateFootstepAudio();
         updateThirdPersonCamera();
 
         const AnimationClip* desiredClip = findClip(jamesAnimations, "idle");
@@ -656,6 +752,107 @@ int main()
         lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
         lightingShader.setFloat("emissiveStrength", 0.0f);
 
+        float saveDistance = glm::length(glm::vec2(playerPosition.x - savePointPosition.x, playerPosition.z - savePointPosition.z));
+        bool savePointInRange = saveDistance <= SAVE_POINT_INTERACT_RADIUS;
+        if (saveMenuOpen || savePointInRange) {
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            lightingShader.use();
+            lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
+            lightingShader.setMat4("view", glm::mat4(1.0f));
+            lightingShader.setVec3("viewPos", 0.0f, 0.0f, 1.0f);
+            lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
+            lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
+            lightingShader.setInt("numPointLights", 0);
+            lightingShader.setInt("fogEnabled", 0);
+            lightingShader.setInt("useSkinning", 0);
+            lightingShader.setFloat("material_ambientStrength", 1.0f);
+            lightingShader.setFloat("material_specularStrength", 0.0f);
+            lightingShader.setFloat("emissiveStrength", 0.0f);
+            lightingShader.setFloat("alphaCutoff", 0.01f);
+
+            if (saveMenuOpen) {
+                drawHudQuad(getWhiteTexture(), 0.0f, 0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), glm::vec3(0.11f, 0.0f, 0.0f), 0.92f);
+                drawHudQuad(getWhiteTexture(), 74.0f, 78.0f, 690.0f, 8.0f, glm::vec3(0.95f, 0.05f, 0.04f), 0.50f);
+                drawHudQuad(getWhiteTexture(), 100.0f, 96.0f, 610.0f, 90.0f, glm::vec3(0.72f, 0.03f, 0.03f), 0.38f);
+                drawHudQuad(getWhiteTexture(), 52.0f, 210.0f, 900.0f, 92.0f, glm::vec3(0.20f, 0.0f, 0.0f), 0.55f);
+                drawHudQuad(getWhiteTexture(), 54.0f, 208.0f, 896.0f, 2.0f, glm::vec3(0.95f, 0.09f, 0.08f), 0.36f);
+                drawHudQuad(getWhiteTexture(), 62.0f, 219.0f, 78.0f, 48.0f, glm::vec3(0.28f, 0.07f, 0.06f), 0.95f);
+                drawHudQuad(getWhiteTexture(), 86.0f, 238.0f, 30.0f, 10.0f, glm::vec3(1.0f, 0.02f, 0.01f), 0.80f);
+                drawHudQuad(getWhiteTexture(), 690.0f, 0.0f, 420.0f, static_cast<float>(SCR_HEIGHT), glm::vec3(0.34f, 0.0f, 0.0f), 0.12f);
+
+                if (!jamesMeshes.empty()) {
+                    glEnable(GL_DEPTH_TEST);
+                    glClear(GL_DEPTH_BUFFER_BIT);
+                    glViewport(SCR_WIDTH / 2, 0, SCR_WIDTH / 2, SCR_HEIGHT);
+                    glm::mat4 portraitProjection = glm::perspective(glm::radians(22.0f), (float)(SCR_WIDTH / 2) / (float)SCR_HEIGHT, 0.1f, 20.0f);
+                    glm::mat4 portraitView = glm::lookAt(glm::vec3(0.0f, 2.35f, 3.35f),
+                                                         glm::vec3(0.0f, 2.35f, 0.0f),
+                                                         glm::vec3(0.0f, 1.0f, 0.0f));
+                    glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
+                    float jamesMinY = jamesAABBMin.y;
+                    glm::mat4 portraitModel = glm::mat4(1.0f);
+                    portraitModel = glm::translate(portraitModel, glm::vec3(0.18f, 0.0f, 0.0f));
+                    portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_X), glm::vec3(1.0f, 0.0f, 0.0f));
+                    portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_Y), glm::vec3(0.0f, 1.0f, 0.0f));
+                    portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_Z), glm::vec3(0.0f, 0.0f, 1.0f));
+                    portraitModel = glm::scale(portraitModel, glm::vec3(jamesRenderScale * 1.45f));
+                    portraitModel = glm::translate(portraitModel, glm::vec3(-jamesCenter.x, -jamesMinY, -jamesCenter.z));
+
+                    lightingShader.setMat4("projection", portraitProjection);
+                    lightingShader.setMat4("view", portraitView);
+                    lightingShader.setMat4("model", portraitModel);
+                    lightingShader.setVec3("viewPos", 0.0f, 3.15f, 4.0f);
+                    lightingShader.setVec3("dirLight_direction", -0.25f, -0.25f, -1.0f);
+                    lightingShader.setVec3("dirLight_color", 1.0f, 0.10f, 0.08f);
+                    lightingShader.setFloat("material_ambientStrength", 0.92f);
+                    lightingShader.setFloat("material_specularStrength", 0.04f);
+                    lightingShader.setFloat("objectAlpha", 0.55f);
+                    lightingShader.setFloat("emissiveStrength", 0.04f);
+                    lightingShader.setInt("useSkinning", jamesBoneCount > 0 && jamesAnimState.current ? 1 : 0);
+                    for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i) {
+                        lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", jamesAnimState.finalMatrices[i]);
+                    }
+                    for (auto &m : jamesMeshes) {
+                        lightingShader.setVec3("objectColor", glm::vec3(1.0f, 0.18f, 0.12f) * m.materialColor);
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, m.texture);
+                        glBindVertexArray(m.VAO);
+                        glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                    }
+                    glDisable(GL_DEPTH_TEST);
+                    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+                    lightingShader.setInt("useSkinning", 0);
+                    lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
+                    lightingShader.setMat4("view", glm::mat4(1.0f));
+                    lightingShader.setVec3("viewPos", 0.0f, 0.0f, 1.0f);
+                    lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
+                    lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
+                    lightingShader.setFloat("material_ambientStrength", 1.0f);
+                    lightingShader.setFloat("material_specularStrength", 0.0f);
+                    lightingShader.setFloat("objectAlpha", 1.0f);
+                    lightingShader.setFloat("emissiveStrength", 0.0f);
+                }
+
+                drawHudQuad(saveTitleText.texture, 64.0f, 28.0f, static_cast<float>(saveTitleText.width), static_cast<float>(saveTitleText.height), glm::vec3(1.0f), 1.0f);
+                drawHudQuad(saveEmptyText.texture, 190.0f, 98.0f, static_cast<float>(saveEmptyText.width), static_cast<float>(saveEmptyText.height), glm::vec3(1.0f), 1.0f);
+                drawHudQuad(saveLocationText.texture, 156.0f, 220.0f, static_cast<float>(saveLocationText.width), static_cast<float>(saveLocationText.height), glm::vec3(1.0f), 1.0f);
+                drawHudQuad(saveTimeText.texture, 500.0f, 220.0f, static_cast<float>(saveTimeText.width), static_cast<float>(saveTimeText.height), glm::vec3(1.0f), 1.0f);
+                drawHudQuad(savePromptText.texture, 948.0f, 660.0f, static_cast<float>(savePromptText.width), static_cast<float>(savePromptText.height), glm::vec3(1.0f), 1.0f);
+            } else {
+                drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 32.0f, glm::vec3(0.12f, 0.0f, 0.0f), 0.48f);
+                drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 1.0f, glm::vec3(0.62f, 0.08f, 0.06f), 0.42f);
+                drawHudQuad(saveInteractText.texture, 645.0f, 630.0f, static_cast<float>(saveInteractText.width), static_cast<float>(saveInteractText.height), glm::vec3(1.0f), 1.0f);
+            }
+
+            lightingShader.setFloat("objectAlpha", 1.0f);
+            lightingShader.setFloat("alphaCutoff", 0.38f);
+            lightingShader.setFloat("material_ambientStrength", 0.48f);
+            lightingShader.setFloat("material_specularStrength", 0.12f);
+            lightingShader.setInt("fogEnabled", 1);
+            glEnable(GL_DEPTH_TEST);
+        }
+
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -677,6 +874,7 @@ int main()
         if (m.EBO) glDeleteBuffers(1, &m.EBO);
         if (m.texture) glDeleteTextures(1, &m.texture);
     }
+    shutdownAudio();
     Gdiplus::GdiplusShutdown(gdiplusToken);
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
@@ -689,8 +887,28 @@ int main()
 // ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow *window)
 {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    playerIsMoving = false;
+    bool ePressed = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+    bool escapePressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+    if (saveMenuOpen) {
+        if ((ePressed && !eWasPressed) || escapePressed) {
+            saveMenuOpen = false;
+        }
+        eWasPressed = ePressed;
+        return;
+    }
+
+    if (escapePressed)
         glfwSetWindowShouldClose(window, true);
+
+    float saveDistance = glm::length(glm::vec2(playerPosition.x - savePointPosition.x, playerPosition.z - savePointPosition.z));
+    if (ePressed && !eWasPressed && saveDistance <= SAVE_POINT_INTERACT_RADIUS) {
+        saveMenuOpen = true;
+        eWasPressed = ePressed;
+        return;
+    }
+    eWasPressed = ePressed;
+
     bool spacePressed = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
     if (spacePressed && !spaceWasPressed)
         jumpRequested = true;
@@ -726,6 +944,7 @@ void processInput(GLFWwindow *window)
             nextPosition.y = playerGroundY;
             playerPosition = nextPosition;
             playerYaw = glm::degrees(atan2(movement.x, movement.z));
+            playerIsMoving = true;
         }
     }
 
@@ -795,6 +1014,61 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     thirdPersonDistance -= static_cast<float>(yoffset) * 0.35f;
     thirdPersonDistance = glm::clamp(thirdPersonDistance, 1.9f, 5.8f);
+}
+
+bool audioCommand(const std::string& command)
+{
+    char errorText[256] = {};
+    MCIERROR error = mciSendStringA(command.c_str(), nullptr, 0, nullptr);
+    if (error != 0) {
+        mciGetErrorStringA(error, errorText, sizeof(errorText));
+        std::cout << "Audio command failed: " << command << " -> " << errorText << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void initAudio()
+{
+    audioCommand("close bgm");
+    audioCommand("close footsteps");
+
+    if (audioCommand("open \"sounds\\2-white-noiz.mp3\" type mpegvideo alias bgm")) {
+        audioCommand("setaudio bgm volume to 95");
+        audioCommand("play bgm repeat");
+    }
+
+    if (audioCommand("open \"sounds\\walking_soft.wav\" type waveaudio alias footsteps")) {
+        audioCommand("setaudio footsteps volume to 1000");
+    }
+}
+
+void updateFootstepAudio()
+{
+    if (playerIsMoving) {
+        footstepTimer -= deltaTime;
+        if (footstepTimer <= 0.0f) {
+            audioCommand("stop footsteps");
+            audioCommand("seek footsteps to start");
+            if (audioCommand("play footsteps from 0")) {
+                footstepsPlaying = true;
+                footstepTimer = 0.60f;
+            }
+        }
+    } else if (footstepsPlaying) {
+        audioCommand("stop footsteps");
+        audioCommand("seek footsteps to start");
+        footstepsPlaying = false;
+        footstepTimer = 0.0f;
+    }
+}
+
+void shutdownAudio()
+{
+    audioCommand("stop footsteps");
+    audioCommand("stop bgm");
+    audioCommand("close footsteps");
+    audioCommand("close bgm");
 }
 
 

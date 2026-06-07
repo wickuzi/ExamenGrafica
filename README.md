@@ -1,289 +1,222 @@
 # Paseo Virtual Silent Hill 2 con OpenGL
 
-Proyecto de la materia Programación Gráfica. Paseo Virtual basado en el videojuego clásico **Silent Hill 2**, realizado en OpenGL. Esta configurado para compilarse y ejecutarse desde **Visual Studio Code en Windows**.
-
-![C++](https://img.shields.io/badge/C%2B%2B-17-blue)
-![OpenGL](https://img.shields.io/badge/OpenGL-3.3-green)
-![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
-![IDE](https://img.shields.io/badge/IDE-VS%20Code-blueviolet)
-
-## Tabla De Contenido
-
-- [Caracteristicas](#caracteristicas)
-- [Estructura Del Proyecto](#estructura-del-proyecto)
-- [Requisitos](#requisitos)
-- [Instalacion En Una Laptop Nueva](#instalacion-en-una-laptop-nueva)
-- [Abrir En Visual Studio Code](#abrir-en-visual-studio-code)
-- [Compilar](#compilar)
-- [Ejecutar](#ejecutar)
-- [Crear Version Portable](#crear-version-portable)
-- [Solucion De Problemas](#solucion-de-problemas)
-
-## Caracteristicas
-
-- Renderizado 3D con OpenGL.
-- Modelo principal: **James Sunderland**.
-- Skybox cubico con seis texturas.
-- Fog gris verdosa y tono visual inspirado en Silent Hill 2.
-- Iluminacion Phong con luz direccional y luces puntuales.
-- Camara en tercera persona con rotacion por mouse.
-- Carga de modelos `.glb` y `.dae` mediante Assimp.
-- Scripts de build para PowerShell y Bash.
-- Configuracion lista para VS Code.
-- Empaquetado portable para ejecutar en otra laptop.
-
-## Estructura Del Proyecto
-
-```text
-.
-|-- Resource Files/        # Codigo fuente, shaders y headers locales
-|-- models/
-|   |-- james/             # Modelo 3D de James Sunderland
-|   `-- map/               # Escenario Collada y texturas
-|-- skybox/                # Texturas del cubemap
-|-- glad/                  # Loader de OpenGL
-|-- glm/                   # Libreria matematica
-|-- SOIL2/                 # stb_image y helpers de imagen
-|-- assimp/                # Assimp y librerias compiladas
-|-- .vscode/               # Tareas, debug e IntelliSense para VS Code
-|-- build.ps1              # Compila en Windows con PowerShell
-|-- build.sh               # Compila desde shell tipo MSYS2/Git Bash
-|-- package.ps1            # Genera dist/opengl-portable
-`-- CMakeLists.txt         # Configuracion CMake alternativa
-```
-
-Carpetas generadas:
-
-```text
-build/                  # Resultado de compilacion local
-dist/opengl-portable/   # Carpeta portable para compartir
-```
-
-Estas carpetas se pueden borrar y regenerar.
+Guia para compilar y ejecutar el proyecto correctamente en una computadora Windows.
 
 ## Requisitos
 
-- Windows 10/11.
-- Visual Studio Code.
-- Extension **C/C++** de Microsoft para VS Code.
-- MSYS2/MinGW 64-bit instalado en `C:\msys64`.
-- Driver de video con soporte para **OpenGL 3.3** o superior.
+- Windows 10 o Windows 11.
+- Driver de video actualizado con soporte para OpenGL 3.3 o superior.
+- Visual Studio Code, opcional pero recomendado.
+- MSYS2 instalado en `C:\msys64`.
+- Compilador MinGW 64-bit.
+- Librerias MinGW de GLFW y GLEW.
 
-El proyecto ya incluye `glad`, `glm`, `SOIL2`, `assimp`, shaders, skybox, el modelo 3D y las DLLs principales. No muevas esas carpetas fuera del proyecto.
+El proyecto ya incluye las carpetas y archivos principales del motor:
 
-## Instalacion En Una Laptop Nueva
+```text
+Resource Files/   codigo fuente y shaders
+models/           modelos 3D y texturas del mapa/personaje
+sounds/           musica y efectos de sonido
+skybox/           texturas del cielo
+glad/             loader de OpenGL
+glm/              libreria matematica
+SOIL2/            carga de imagenes
+assimp/           headers y libreria compilada de Assimp
+glfw3.dll
+glew32.dll
+build.ps1
+```
 
-1. Instala **MSYS2** desde su sitio oficial.
-2. Abre la terminal **MSYS2 MinGW x64**.
-3. Instala compilador, debugger y librerias:
+No muevas ni borres esas carpetas. El ejecutable necesita que los recursos se copien junto a `opengl.exe`.
+
+## Instalar MSYS2 y Dependencias
+
+1. Instala MSYS2 desde:
+
+```text
+https://www.msys2.org/
+```
+
+2. Abre la terminal:
+
+```text
+MSYS2 MinGW x64
+```
+
+3. Instala el compilador y librerias necesarias:
 
 ```bash
 pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-gdb mingw-w64-x86_64-glfw mingw-w64-x86_64-glew
 ```
 
-4. Verifica que exista:
+4. Verifica que exista el compilador:
 
 ```text
 C:\msys64\mingw64\bin\g++.exe
 ```
 
-## Abrir En Visual Studio Code
+Si esa ruta existe, el script `build.ps1` lo detecta automaticamente.
 
-1. Abre VS Code.
-2. Ve a `File > Open Folder...`.
-3. Selecciona la carpeta completa del proyecto.
-4. No abras solamente `Resource Files`, porque VS Code necesita ver `.vscode`, `models`, `skybox` y los scripts.
+## Abrir el Proyecto
 
-Tareas disponibles:
+Abre la carpeta completa del proyecto, no solo `Resource Files`.
 
-| Tarea | Uso |
-| --- | --- |
-| `Build OpenGL` | Compila sin ejecutar. |
-| `Run OpenGL` | Compila y ejecuta. |
-| `Package Portable` | Crea `dist/opengl-portable`. |
-| `Debug OpenGL` | Ejecuta con `F5` usando `gdb`. |
+La raiz debe verse parecido a esto:
+
+```text
+aliasing/
+|-- Resource Files/
+|-- models/
+|-- sounds/
+|-- skybox/
+|-- glad/
+|-- glm/
+|-- SOIL2/
+|-- assimp/
+|-- build.ps1
+|-- CMakeLists.txt
+`-- README.md
+```
 
 ## Compilar
 
-### Desde VS Code
-
-Presiona:
-
-```text
-Ctrl+Shift+B
-```
-
-Si VS Code pregunta que tarea ejecutar, elige:
-
-```text
-Build OpenGL
-```
-
-Esto ejecuta internamente:
+Desde PowerShell, entra a la carpeta raiz del proyecto:
 
 ```powershell
-.\build.ps1 -NoRun
+cd C:\ruta\al\proyecto\aliasing
 ```
 
-El ejecutable queda en:
-
-```text
-build/bin/opengl.exe
-```
-
-Durante la compilacion se copian automaticamente a `build/bin`:
-
-- `Resource Files` con los shaders necesarios.
-- `models` con James Sunderland.
-- `skybox` con las seis texturas.
-- `glfw3.dll`.
-- `glew32.dll`.
-- `libassimp-6.dll`.
-- DLLs runtime de MinGW cuando estan disponibles.
-
-### Desde PowerShell
-
-Desde la raiz del proyecto:
-
-```powershell
-.\build.ps1 -NoRun
-```
-
-Si Windows bloquea la ejecucion de scripts:
+Compila sin ejecutar:
 
 ```powershell
 C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
 ```
 
+Si todo sale bien, el ejecutable queda en:
+
+```text
+build/bin/opengl.exe
+```
+
+Durante la compilacion el script copia automaticamente:
+
+```text
+build/bin/Resource Files/
+build/bin/models/
+build/bin/sounds/
+build/bin/skybox/
+build/bin/glfw3.dll
+build/bin/glew32.dll
+build/bin/libassimp-6.dll
+build/bin/libstdc++-6.dll
+build/bin/libgcc_s_seh-1.dll
+build/bin/libwinpthread-1.dll
+```
+
 ## Ejecutar
 
-### Desde VS Code
-
 Opcion recomendada:
-
-```text
-Terminal > Run Task... > Run OpenGL
-```
-
-Para depurar:
-
-```text
-F5 > Debug OpenGL
-```
-
-### Desde PowerShell
-
-Compilar y ejecutar en un solo paso:
 
 ```powershell
 C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Ejecutar manualmente:
+Eso compila y luego abre el programa.
+
+Tambien puedes ejecutarlo manualmente:
 
 ```powershell
 cd .\build\bin
 .\opengl.exe
 ```
 
-El programa debe ejecutarse desde `build/bin` porque carga shaders, modelo y skybox usando rutas relativas al `.exe`.
+Importante: ejecuta `opengl.exe` desde `build/bin`, porque el programa carga shaders, modelos, sonidos y skybox usando rutas relativas.
 
-## Controles
+## Compilar Desde VS Code
 
-| Control | Accion |
-| --- | --- |
-| `W`, `A`, `S`, `D` | Mover a James por la escena. |
-| Mouse | Rotar la camara en tercera persona. |
-| Rueda del mouse | Acercar o alejar la camara. |
-| `Shift` | Movimiento mas rapido. |
-| `I`, `J`, `K`, `L`, `U`, `O` | Ajustar la luz blanca de prueba. |
-| `Esc` | Cerrar la ventana. |
+1. Abre la carpeta completa del proyecto en VS Code.
+2. Presiona:
 
-## Crear Version Portable
+```text
+Ctrl+Shift+B
+```
 
-Para crear una carpeta lista para compartir:
+3. Selecciona la tarea:
+
+```text
+Build OpenGL
+```
+
+Para ejecutar desde VS Code, usa:
+
+```text
+Terminal > Run Task... > Run OpenGL
+```
+
+## Problemas Comunes
+
+### PowerShell bloquea el script
+
+Usa siempre este comando:
 
 ```powershell
-C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\package.ps1
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
 ```
 
-Se genera:
+### No se encuentra `g++.exe`
 
-```text
-dist/opengl-portable
-```
-
-Contenido esperado:
-
-```text
-opengl.exe
-glfw3.dll
-glew32.dll
-libassimp-6.dll
-libstdc++-6.dll
-libgcc_s_seh-1.dll
-libwinpthread-1.dll
-Resource Files/
-models/
-skybox/
-```
-
-Para compartirlo, comprime `dist/opengl-portable` y abre `opengl.exe` desde esa misma carpeta en la otra laptop.
-
-## Solucion De Problemas
-
-### `g++.exe` No Se Encuentra
-
-Verifica que exista:
+Instala MSYS2 y confirma que exista:
 
 ```text
 C:\msys64\mingw64\bin\g++.exe
 ```
 
-Si no existe, instala MSYS2 y los paquetes indicados en [Instalacion En Una Laptop Nueva](#instalacion-en-una-laptop-nueva).
+### Error `cannot find -lglfw3` o `cannot find -lglew32`
 
-### Error `cannot find -lglfw3` O `cannot find -lglew32`
-
-Instala las librerias faltantes desde **MSYS2 MinGW x64**:
+Instala GLFW y GLEW desde la terminal `MSYS2 MinGW x64`:
 
 ```bash
 pacman -S --needed mingw-w64-x86_64-glfw mingw-w64-x86_64-glew
 ```
 
-### Error Con `gdb.exe` Al Presionar F5
+### Falta `libassimp-6.dll`
 
-Instala el debugger:
-
-```bash
-pacman -S --needed mingw-w64-x86_64-gdb
-```
-
-### El Skybox No Carga
-
-Verifica que las seis imagenes esten en:
+Verifica que exista:
 
 ```text
+assimp/build-mingw/bin/libassimp-6.dll
+```
+
+El script la copia a:
+
+```text
+build/bin/libassimp-6.dll
+```
+
+### El juego abre pero no carga modelos, sonidos o skybox
+
+Revisa que existan estas carpetas:
+
+```text
+build/bin/Resource Files
+build/bin/models
+build/bin/sounds
 build/bin/skybox
 ```
 
-o, en la version portable:
+Si falta alguna, vuelve a compilar con:
 
-```text
-dist/opengl-portable/skybox
+```powershell
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
 ```
 
-### El Programa Compila Pero No Abre
+### El programa no abre
 
-Revisa lo siguiente:
-
-- `opengl.exe` debe estar junto a sus DLLs.
-- `Resource Files`, `models` y `skybox` deben estar junto al `.exe`.
-- El driver de video debe estar actualizado.
-- La GPU debe soportar OpenGL 3.3 o superior.
-
-Para ver errores en consola:
+Ejecutalo desde consola para ver el error:
 
 ```powershell
 cd .\build\bin
 .\opengl.exe
 ```
+
+Tambien revisa que tu GPU soporte OpenGL 3.3 o superior.
