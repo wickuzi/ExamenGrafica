@@ -28,6 +28,10 @@
 #include <gdiplus.h>
 #include <cfloat>
 
+// Para reproducción de video
+#include <dshow.h>
+#include <windows.h>
+#include <string>
 // stb_image for TGA and other formats GDI+ may not support
 #define STBI_NO_PKM
 #define STB_IMAGE_IMPLEMENTATION
@@ -40,107 +44,148 @@
 #define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
 #endif
 
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "oleaut32.lib")
+#pragma comment(lib, "uuid.lib")
+#pragma comment(lib, "strmiids.lib")
+// Agregar al inicio del archivo, cerca de otras variables globales
+double mouseX = 0, mouseY = 0;
+bool mouseLeftPressed = false;
+bool mouseLeftWasPressed = false;
+
+// Constantes para la cinemática
+const std::string CINEMATIC_VIDEO_PATH = "Resource Files\\video_sh.wmv"; // Cambia por tu video
+const int CINEMATIC_WIDTH = 1920;
+const int CINEMATIC_HEIGHT = 1080;
+
 const int MAX_BONES = 100;
 const int MAX_BONE_INFLUENCE = 4;
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-void mouse_callback(GLFWwindow* window, double xpos, double ypos);
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+// Agregar con las otras variables globales
+HWND glfwHWND = nullptr;
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 void updateThirdPersonCamera();
 void initAudio();
 void updateFootstepAudio();
 void shutdownAudio();
-bool audioCommand(const std::string& command);
-unsigned int loadTextureFromJpeg(const wchar_t* path);
+bool audioCommand(const std::string &command);
+unsigned int loadTextureFromJpeg(const wchar_t *path);
 struct HudTexture;
-HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float fontSize, int width, int height, const Gdiplus::Color& color);
-unsigned int loadTextureFromFile(const std::string &path, const std::string &directory, std::map<std::string,unsigned int> &loaded);
+HudTexture createTextTexture(const wchar_t *text, const wchar_t *fontName, float fontSize, int width, int height, const Gdiplus::Color &color);
+unsigned int loadTextureFromFile(const std::string &path, const std::string &directory, std::map<std::string, unsigned int> &loaded);
 unsigned int getWhiteTexture();
-unsigned int loadMaterialTexture(aiMaterial* material, const aiScene* scene, const std::string& directory, std::map<std::string,unsigned int>& loaded);
-std::vector<unsigned int> loadMaterialTextureFallbacks(const std::string& path, std::unordered_map<std::string, unsigned int>& byName);
-struct BoneInfo {
-    int id=0;
-    glm::mat4 offset=glm::mat4(1.0f);
+unsigned int loadMaterialTexture(aiMaterial *material, const aiScene *scene, const std::string &directory, std::map<std::string, unsigned int> &loaded);
+std::vector<unsigned int> loadMaterialTextureFallbacks(const std::string &path, std::unordered_map<std::string, unsigned int> &byName);
+struct BoneInfo
+{
+    int id = 0;
+    glm::mat4 offset = glm::mat4(1.0f);
 };
-struct MeshData {
-    unsigned int VAO=0, VBO=0, EBO=0;
-    unsigned int indexCount=0;
-    unsigned int texture=0;
-    bool hasTexture=false;
-    bool hasBones=false;
-    glm::vec3 materialColor=glm::vec3(1.0f);
-    float materialAlpha=1.0f;
+struct MeshData
+{
+    unsigned int VAO = 0, VBO = 0, EBO = 0;
+    unsigned int indexCount = 0;
+    unsigned int texture = 0;
+    bool hasTexture = false;
+    bool hasBones = false;
+    glm::vec3 materialColor = glm::vec3(1.0f);
+    float materialAlpha = 1.0f;
     std::vector<glm::vec3> positions;
     std::vector<unsigned int> indices;
 };
-struct BoneVertexData {
+struct BoneVertexData
+{
     std::array<int, MAX_BONE_INFLUENCE> ids;
     std::array<float, MAX_BONE_INFLUENCE> weights;
 };
-struct KeyPosition {
+struct KeyPosition
+{
     glm::vec3 position;
-    float timeStamp=0.0f;
+    float timeStamp = 0.0f;
 };
-struct KeyRotation {
+struct KeyRotation
+{
     glm::quat orientation;
-    float timeStamp=0.0f;
+    float timeStamp = 0.0f;
 };
-struct KeyScale {
+struct KeyScale
+{
     glm::vec3 scale;
-    float timeStamp=0.0f;
+    float timeStamp = 0.0f;
 };
-struct AnimChannel {
+struct AnimChannel
+{
     std::string name;
     std::vector<KeyPosition> positions;
     std::vector<KeyRotation> rotations;
     std::vector<KeyScale> scales;
 };
-struct AnimNode {
+struct AnimNode
+{
     std::string name;
-    glm::mat4 transform=glm::mat4(1.0f);
+    glm::mat4 transform = glm::mat4(1.0f);
     std::vector<AnimNode> children;
 };
-struct AnimationClip {
+struct AnimationClip
+{
     std::string name;
-    float duration=0.0f;
-    float ticksPerSecond=25.0f;
+    float duration = 0.0f;
+    float ticksPerSecond = 25.0f;
     AnimNode root;
     std::unordered_map<std::string, AnimChannel> channels;
-    bool valid=false;
+    bool valid = false;
 };
-struct AnimationState {
-    const AnimationClip* current=nullptr;
-    float currentTime=0.0f;
+struct AnimationState
+{
+    const AnimationClip *current = nullptr;
+    float currentTime = 0.0f;
     std::vector<glm::mat4> finalMatrices;
-    bool currentLooping=true;
+    bool currentLooping = true;
 };
-struct WalkTriangle {
+struct WalkTriangle
+{
     glm::vec3 a, b, c;
     float minX, maxX, minZ, maxZ;
     float area;
 };
-struct HudTexture {
-    unsigned int texture=0;
-    int width=0;
-    int height=0;
+struct HudTexture
+{
+    unsigned int texture = 0;
+    int width = 0;
+    int height = 0;
 };
-glm::mat4 aiToGlm(const aiMatrix4x4& from);
-void processNode(const aiScene* scene, aiNode* node, const glm::mat4& parentTransform, const std::string &directory, std::vector<MeshData> &meshes, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string,unsigned int> &loaded, std::unordered_map<std::string, BoneInfo>* boneInfoMap, int* boneCounter);
-MeshData processMesh(aiMesh* mesh, const aiScene* scene, const glm::mat4& transform, const std::string &directory, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string,unsigned int> &loaded, std::unordered_map<std::string, BoneInfo>* boneInfoMap, int* boneCounter);
-std::vector<MeshData> loadModel(const std::string &path, glm::vec3 &outAABBMin, glm::vec3 &outAABBMax, std::unordered_map<std::string, BoneInfo>* boneInfoMap=nullptr, int* boneCounter=nullptr, glm::mat4* outGlobalInverse=nullptr);
-AnimationClip loadAnimationClip(const std::string& path, const std::string& name);
-void updateAnimation(AnimationState& state, const AnimationClip* clip, float deltaSeconds, const std::unordered_map<std::string, BoneInfo>& boneInfoMap, int boneCount, const glm::mat4& globalInverseTransform, bool looping);
-void calculateBoneTransforms(const AnimNode& node, const glm::mat4& parentTransform, const AnimationClip& clip, std::vector<glm::mat4>& finalMatrices, const std::unordered_map<std::string, BoneInfo>& boneInfoMap);
-glm::mat4 interpolateChannelTransform(const AnimChannel& channel, float animationTime);
-const AnimationClip* findClip(const std::unordered_map<std::string, AnimationClip>& clips, const std::string& name);
-std::vector<WalkTriangle> buildWalkTriangles(const std::vector<MeshData>& meshes, const glm::mat4& modelTransform);
+
+struct MenuItem
+{
+    std::string text;
+    HudTexture normalTexture;
+    HudTexture selectedTexture;
+    float x, y;
+    bool isSelected;
+};
+
+std::vector<MenuItem> menuItems;
+int selectedItemIndex = 0;
+glm::mat4 aiToGlm(const aiMatrix4x4 &from);
+void processNode(const aiScene *scene, aiNode *node, const glm::mat4 &parentTransform, const std::string &directory, std::vector<MeshData> &meshes, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string, unsigned int> &loaded, std::unordered_map<std::string, BoneInfo> *boneInfoMap, int *boneCounter);
+MeshData processMesh(aiMesh *mesh, const aiScene *scene, const glm::mat4 &transform, const std::string &directory, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string, unsigned int> &loaded, std::unordered_map<std::string, BoneInfo> *boneInfoMap, int *boneCounter);
+std::vector<MeshData> loadModel(const std::string &path, glm::vec3 &outAABBMin, glm::vec3 &outAABBMax, std::unordered_map<std::string, BoneInfo> *boneInfoMap = nullptr, int *boneCounter = nullptr, glm::mat4 *outGlobalInverse = nullptr);
+AnimationClip loadAnimationClip(const std::string &path, const std::string &name);
+void updateAnimation(AnimationState &state, const AnimationClip *clip, float deltaSeconds, const std::unordered_map<std::string, BoneInfo> &boneInfoMap, int boneCount, const glm::mat4 &globalInverseTransform, bool looping);
+void calculateBoneTransforms(const AnimNode &node, const glm::mat4 &parentTransform, const AnimationClip &clip, std::vector<glm::mat4> &finalMatrices, const std::unordered_map<std::string, BoneInfo> &boneInfoMap);
+glm::mat4 interpolateChannelTransform(const AnimChannel &channel, float animationTime);
+const AnimationClip *findClip(const std::unordered_map<std::string, AnimationClip> &clips, const std::string &name);
+std::vector<WalkTriangle> buildWalkTriangles(const std::vector<MeshData> &meshes, const glm::mat4 &modelTransform);
 glm::vec3 findSpawnPoint();
-bool findGroundHeightAt(float x, float z, float maxStepUp, float& outY);
+bool findGroundHeightAt(float x, float z, float maxStepUp, float &outY);
 float findGroundHeight(float x, float z, float fallbackY);
-glm::vec3 closestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c);
-bool findWallAttachment(const std::vector<MeshData>& meshes, const glm::mat4& modelTransform, const glm::vec3& anchor, const glm::vec3& preferredNormal, glm::vec3& outPosition, glm::vec3& outNormal);
-glm::mat4 makeWallModel(const glm::vec3& position, const glm::vec3& normal, const glm::vec3& scale);
+glm::vec3 closestPointOnTriangle(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c);
+bool findWallAttachment(const std::vector<MeshData> &meshes, const glm::mat4 &modelTransform, const glm::vec3 &anchor, const glm::vec3 &preferredNormal, glm::vec3 &outPosition, glm::vec3 &outNormal);
+glm::mat4 makeWallModel(const glm::vec3 &position, const glm::vec3 &normal, const glm::vec3 &scale);
 void applyTextureParams(bool generateMipmaps);
 // create a simple cube mesh for light source
 void createCube(unsigned int &VAO, unsigned int &indexCount);
@@ -176,7 +221,7 @@ bool footstepsPlaying = false;
 float footstepTimer = 0.0f;
 
 // timing
-float deltaTime = 0.0f;	
+float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 const glm::vec3 SAVE_POINT_POSITION = glm::vec3(4.5f, 1.75f, 1.5f);
@@ -196,7 +241,94 @@ const float MODEL_ROT_Y = 0.0f;
 const float MODEL_ROT_Z = 0.0f; // try X=90, Y=180, Z=0 for upright facing +Z
 const float MAP_TARGET_SIZE = 38.0f;
 
-unsigned int loadTextureFromJpeg(const wchar_t* path)
+// Función mejorada para crear texturas con contorno y sombra
+HudTexture createStyledTextTexture(const wchar_t *text, const wchar_t *fontName, float fontSize, int width, int height,
+                                   const Gdiplus::Color &color, const Gdiplus::Color &outlineColor = Gdiplus::Color(0, 0, 0, 200),
+                                   bool hasShadow = true, const Gdiplus::Color &shadowColor = Gdiplus::Color(0, 0, 0, 180))
+{
+    HudTexture result{};
+    Gdiplus::Bitmap bitmap(width, height, PixelFormat32bppARGB);
+    Gdiplus::Graphics graphics(&bitmap);
+    graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+    graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
+
+    Gdiplus::FontFamily requestedFamily(fontName);
+    const Gdiplus::FontFamily *family = requestedFamily.IsAvailable()
+                                            ? &requestedFamily
+                                            : Gdiplus::FontFamily::GenericSerif();
+    Gdiplus::Font font(family, fontSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+
+    Gdiplus::StringFormat format;
+    format.SetAlignment(Gdiplus::StringAlignmentCenter);
+    format.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    Gdiplus::RectF layout(0.0f, 0.0f, static_cast<Gdiplus::REAL>(width), static_cast<Gdiplus::REAL>(height));
+
+    // Dibujar sombra
+    if (hasShadow)
+    {
+        Gdiplus::SolidBrush shadowBrush(shadowColor);
+        Gdiplus::RectF shadowLayout(layout.X + 2.0f, layout.Y + 2.0f, layout.Width, layout.Height);
+        graphics.DrawString(text, -1, &font, shadowLayout, &format, &shadowBrush);
+    }
+
+    // Dibujar contorno (dibujar el texto múltiples veces en diferentes direcciones)
+    if (outlineColor.GetAlpha() > 0)
+    {
+        Gdiplus::SolidBrush outlineBrush(outlineColor);
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0)
+                    continue;
+                Gdiplus::RectF outlineLayout(layout.X + dx, layout.Y + dy, layout.Width, layout.Height);
+                graphics.DrawString(text, -1, &font, outlineLayout, &format, &outlineBrush);
+            }
+        }
+    }
+
+    // Dibujar texto principal
+    Gdiplus::SolidBrush textBrush(color);
+    graphics.DrawString(text, -1, &font, layout, &format, &textBrush);
+
+    // Convertir a OpenGL texture
+    Gdiplus::Rect rect(0, 0, width, height);
+    Gdiplus::BitmapData bitmapData{};
+    if (bitmap.LockBits(&rect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &bitmapData) != Gdiplus::Ok)
+        return result;
+
+    std::vector<unsigned char> pixels(width * height * 4);
+    auto *srcBase = static_cast<unsigned char *>(bitmapData.Scan0);
+    for (int y = 0; y < height; ++y)
+    {
+        const unsigned char *srcRow = srcBase + y * bitmapData.Stride;
+        unsigned char *dstRow = pixels.data() + y * width * 4;
+        for (int x = 0; x < width; ++x)
+        {
+            const unsigned char *src = srcRow + x * 4;
+            unsigned char *dst = dstRow + x * 4;
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = src[3];
+        }
+    }
+    bitmap.UnlockBits(&bitmapData);
+
+    glGenTextures(1, &result.texture);
+    glBindTexture(GL_TEXTURE_2D, result.texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    result.width = width;
+    result.height = height;
+    return result;
+}
+
+unsigned int loadTextureFromJpeg(const wchar_t *path)
 {
     Gdiplus::Bitmap bitmap(path);
     if (bitmap.GetLastStatus() != Gdiplus::Ok)
@@ -207,7 +339,7 @@ unsigned int loadTextureFromJpeg(const wchar_t* path)
         return 0;
     }
 
-    //bitmap.RotateFlip(Gdiplus::RotateNoneFlipY);
+    // bitmap.RotateFlip(Gdiplus::RotateNoneFlipY);
 
     const UINT width = bitmap.GetWidth();
     const UINT height = bitmap.GetHeight();
@@ -220,15 +352,15 @@ unsigned int loadTextureFromJpeg(const wchar_t* path)
     }
 
     std::vector<unsigned char> pixels(width * height * 4);
-    auto* srcBase = static_cast<unsigned char*>(bitmapData.Scan0);
+    auto *srcBase = static_cast<unsigned char *>(bitmapData.Scan0);
     for (UINT y = 0; y < height; ++y)
     {
-        const unsigned char* srcRow = srcBase + y * bitmapData.Stride;
-        unsigned char* dstRow = pixels.data() + y * width * 4;
+        const unsigned char *srcRow = srcBase + y * bitmapData.Stride;
+        unsigned char *dstRow = pixels.data() + y * width * 4;
         for (UINT x = 0; x < width; ++x)
         {
-            const unsigned char* src = srcRow + x * 4;
-            unsigned char* dst = dstRow + x * 4;
+            const unsigned char *src = srcRow + x * 4;
+            unsigned char *dst = dstRow + x * 4;
             dst[0] = src[2];
             dst[1] = src[1];
             dst[2] = src[0];
@@ -248,7 +380,7 @@ unsigned int loadTextureFromJpeg(const wchar_t* path)
     return texture;
 }
 
-HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float fontSize, int width, int height, const Gdiplus::Color& color)
+HudTexture createTextTexture(const wchar_t *text, const wchar_t *fontName, float fontSize, int width, int height, const Gdiplus::Color &color)
 {
     HudTexture result{};
     Gdiplus::Bitmap bitmap(width, height, PixelFormat32bppARGB);
@@ -257,9 +389,9 @@ HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float
     graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
 
     Gdiplus::FontFamily requestedFamily(fontName);
-    const Gdiplus::FontFamily* family = requestedFamily.IsAvailable()
-        ? &requestedFamily
-        : Gdiplus::FontFamily::GenericSerif();
+    const Gdiplus::FontFamily *family = requestedFamily.IsAvailable()
+                                            ? &requestedFamily
+                                            : Gdiplus::FontFamily::GenericSerif();
     Gdiplus::Font font(family, fontSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::SolidBrush brush(color);
     Gdiplus::StringFormat format;
@@ -274,13 +406,15 @@ HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float
         return result;
 
     std::vector<unsigned char> pixels(width * height * 4);
-    auto* srcBase = static_cast<unsigned char*>(bitmapData.Scan0);
-    for (int y = 0; y < height; ++y) {
-        const unsigned char* srcRow = srcBase + y * bitmapData.Stride;
-        unsigned char* dstRow = pixels.data() + y * width * 4;
-        for (int x = 0; x < width; ++x) {
-            const unsigned char* src = srcRow + x * 4;
-            unsigned char* dst = dstRow + x * 4;
+    auto *srcBase = static_cast<unsigned char *>(bitmapData.Scan0);
+    for (int y = 0; y < height; ++y)
+    {
+        const unsigned char *srcRow = srcBase + y * bitmapData.Stride;
+        unsigned char *dstRow = pixels.data() + y * width * 4;
+        for (int x = 0; x < width; ++x)
+        {
+            const unsigned char *src = srcRow + x * 4;
+            unsigned char *dst = dstRow + x * 4;
             dst[0] = src[2];
             dst[1] = src[1];
             dst[2] = src[0];
@@ -305,24 +439,265 @@ HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float
 enum GameState
 {
     MENU,
+    CINEMATIC,
     PLAYING,
     PAUSED
 };
 
+// Variables globales para el video (reemplaza las anteriores)
+IGraphBuilder *g_pGraph = nullptr;
+IMediaControl *g_pControl = nullptr;
+IMediaEvent *g_pEvent = nullptr;
+IVideoWindow *g_pVideoWindow = nullptr;
+bool g_bVideoPlaying = false;
+
 GameState currentState = MENU;
 
+// Inicializar y reproducir video
+bool playCinematicVideo(const std::string &filepath, HWND parentWindow)
+{
+    // Limpiar anterior
+    if (g_pControl)
+    {
+        g_pControl->Stop();
+        g_pControl->Release();
+        g_pControl = nullptr;
+    }
+    if (g_pEvent)
+    {
+        g_pEvent->Release();
+        g_pEvent = nullptr;
+    }
+    if (g_pVideoWindow)
+    {
+        g_pVideoWindow->Release();
+        g_pVideoWindow = nullptr;
+    }
+    if (g_pGraph)
+    {
+        g_pGraph->Release();
+        g_pGraph = nullptr;
+    }
+
+    // Inicializar COM
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+
+    // Crear FilterGraph
+    HRESULT hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
+                                  IID_IGraphBuilder, (void **)&g_pGraph);
+    if (FAILED(hr))
+        return false;
+
+    // Obtener interfaces
+    g_pGraph->QueryInterface(IID_IMediaControl, (void **)&g_pControl);
+    g_pGraph->QueryInterface(IID_IMediaEvent, (void **)&g_pEvent);
+    g_pGraph->QueryInterface(IID_IVideoWindow, (void **)&g_pVideoWindow);
+
+    if (!g_pControl || !g_pEvent || !g_pVideoWindow)
+        return false;
+
+    std::cout << "Video path: " << filepath << std::endl;
+    std::cout << "Existe: " << std::filesystem::exists(filepath) << std::endl;
+    // Cargar video
+    std::wstring wpath(filepath.begin(), filepath.end());
+    hr = g_pGraph->RenderFile(wpath.c_str(), NULL);
+    if (FAILED(hr))
+    {
+        std::cout << "Error RenderFile: 0x"
+                  << std::hex << hr << std::endl;
+        return false;
+    }
+
+    // Configurar ventana
+    g_pVideoWindow->put_Owner((OAHWND)parentWindow);
+    g_pVideoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS);
+    g_pVideoWindow->SetWindowPosition(0, 0, SCR_WIDTH, SCR_HEIGHT);
+    g_pVideoWindow->put_Visible(OATRUE);
+
+    // Reproducir
+    g_pControl->Run();
+    g_bVideoPlaying = true;
+
+    return true;
+}
+
+// Verificar si el video terminó
+bool isCinematicFinished()
+{
+    if (!g_pEvent || !g_bVideoPlaying)
+        return true;
+
+    long evCode = 0;
+    LONG_PTR param1 = 0, param2 = 0;
+
+    while (g_pEvent->GetEvent(&evCode, &param1, &param2, 0) == S_OK)
+    {
+        if (evCode == EC_COMPLETE)
+        {
+            g_pEvent->FreeEventParams(evCode, param1, param2);
+            g_bVideoPlaying = false;
+            return true;
+        }
+        g_pEvent->FreeEventParams(evCode, param1, param2);
+    }
+
+    return false;
+}
+
+// Detener y limpiar el video
+void stopCinematicVideo()
+{
+    if (g_pControl)
+    {
+        g_pControl->Stop();
+        g_bVideoPlaying = false;
+    }
+    if (g_pVideoWindow)
+    {
+        g_pVideoWindow->put_Visible(OAFALSE);
+        g_pVideoWindow->put_Owner(0);
+    }
+}
+
+// Cerrar reproductor
+void closeCinematicPlayer()
+{
+    stopCinematicVideo();
+
+    if (g_pVideoWindow)
+    {
+        g_pVideoWindow->Release();
+        g_pVideoWindow = nullptr;
+    }
+    if (g_pControl)
+    {
+        g_pControl->Release();
+        g_pControl = nullptr;
+    }
+    if (g_pEvent)
+    {
+        g_pEvent->Release();
+        g_pEvent = nullptr;
+    }
+    if (g_pGraph)
+    {
+        g_pGraph->Release();
+        g_pGraph = nullptr;
+    }
+    CoUninitialize();
+}
+
+void processMenuSelection(int index)
+{
+    switch (index)
+    {
+    case 0:
+    { // NUEVA PARTIDA
+        glfwHWND = GetActiveWindow();
+        if (playCinematicVideo(CINEMATIC_VIDEO_PATH, glfwHWND))
+        {
+            currentState = CINEMATIC;
+        }
+        else
+        {
+            // Si falla, ir directo al juego
+            currentState = PLAYING;
+            playerPosition = findSpawnPoint();
+            playerGroundY = findGroundHeight(playerPosition.x, playerPosition.z, playerPosition.y);
+            playerPosition.y = playerGroundY;
+        }
+        break;
+    }
+    case 1: // CONTINUAR
+        currentState = PLAYING;
+        break;
+    case 2: // OPCIONES
+        std::cout << "Opciones - Por implementar" << std::endl;
+        break;
+    case 3: // SALIR
+        glfwSetWindowShouldClose(glfwGetCurrentContext(), true);
+        break;
+    }
+}
+
+void updateMenu(GLFWwindow *window, float deltaTime)
+{
+    // Detectar hover del mouse
+    bool itemSelected = false;
+    for (int i = 0; i < (int)menuItems.size(); i++)
+    {
+        float itemX = menuItems[i].x;
+        float itemY = menuItems[i].y;
+        float itemW = 400.0f;
+        float itemH = 60.0f;
+
+        if (mouseX >= itemX && mouseX <= itemX + itemW &&
+            mouseY >= itemY && mouseY <= itemY + itemH)
+        {
+            selectedItemIndex = i;
+            itemSelected = true;
+
+            // Click con el mouse
+            if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && !mouseLeftWasPressed)
+            {
+                processMenuSelection(selectedItemIndex);
+            }
+            break;
+        }
+    }
+
+    // Si no hay hover, mantener selección por teclado pero sin cambiar visualmente el hover
+    if (!itemSelected)
+    {
+        // Navegación por teclado (WASD o flechas)
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        {
+            static float keyCooldown = 0;
+            if (keyCooldown <= 0)
+            {
+                selectedItemIndex = (selectedItemIndex - 1 + menuItems.size()) % menuItems.size();
+                keyCooldown = 0.2f;
+            }
+            else
+            {
+                keyCooldown -= deltaTime;
+            }
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        {
+            static float keyCooldown = 0;
+            if (keyCooldown <= 0)
+            {
+                selectedItemIndex = (selectedItemIndex + 1) % menuItems.size();
+                keyCooldown = 0.2f;
+            }
+            else
+            {
+                keyCooldown -= deltaTime;
+            }
+        }
+
+        // Enter para seleccionar
+        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
+        {
+            processMenuSelection(selectedItemIndex);
+        }
+    }
+
+    mouseLeftWasPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+}
 int main()
 {
-
 
     // Mostrar directorio de trabajo actual
     char cwd[MAX_PATH];
     GetCurrentDirectoryA(MAX_PATH, cwd);
     std::cout << "Current working directory: " << cwd << std::endl;
-    
+
     // Listar archivos en el directorio actual
     std::cout << "Files in current directory:" << std::endl;
-    for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    for (const auto &entry : std::filesystem::directory_iterator("."))
+    {
         std::cout << "  - " << entry.path().filename().string() << std::endl;
     }
     // glfw: initialize and configure
@@ -339,7 +714,7 @@ int main()
 
     // glfw window creation
     // --------------------
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Silent Hill 2", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Silent Hill 2", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -395,16 +770,16 @@ int main()
     // optional legacy textures may be missing; ignore if not present
 
     // load skybox with cubemap textures
- std::vector<std::string> skyboxFaces = {
-    "skybox/Sky_AllSky_Overcast4_Low_Cam_2_Left+X.png",      // right (+X)
-    "skybox/Sky_AllSky_Overcast4_Low_Cam_3_Right-X.png",     // left (-X)
+    std::vector<std::string> skyboxFaces = {
+        "skybox/Sky_AllSky_Overcast4_Low_Cam_2_Left+X.png",  // right (+X)
+        "skybox/Sky_AllSky_Overcast4_Low_Cam_3_Right-X.png", // left (-X)
 
-    "skybox/Sky_AllSky_Overcast4_Low_Cam_4_Up+Y.png",        // top (+Y)
-    "skybox/Sky_AllSky_Overcast4_Low_Cam_5_Down-Y.png",      // bottom (-Y)
+        "skybox/Sky_AllSky_Overcast4_Low_Cam_4_Up+Y.png",   // top (+Y)
+        "skybox/Sky_AllSky_Overcast4_Low_Cam_5_Down-Y.png", // bottom (-Y)
 
-    "skybox/Sky_AllSky_Overcast4_Low_Cam_0_Front+Z.png",     // front
-    "skybox/Sky_AllSky_Overcast4_Low_Cam_1_Back-Z.png"       // back
-};
+        "skybox/Sky_AllSky_Overcast4_Low_Cam_0_Front+Z.png", // front
+        "skybox/Sky_AllSky_Overcast4_Low_Cam_1_Back-Z.png"   // back
+    };
     Skybox skybox(skyboxFaces);
 
     lightingShader.use();
@@ -433,25 +808,81 @@ int main()
     unsigned int hudQuadIndexCount = 0;
     createQuad(hudQuadVAO, hudQuadIndexCount);
 
-    //richard's custom HUD textures
+    // richard's custom HUD textures
     HudTexture titleText;
     HudTexture startText;
     HudTexture exitText;
     HudTexture menuWallpaper;
-    
+
+    // Crear textos del menú con estilos mejorados
+    titleText = createStyledTextTexture(
+        L"                          SILENT HILL 2",
+        L"Georgia", 72, 800, 100,
+        Gdiplus::Color(220, 200, 180, 255), // Color dorado pálido
+        Gdiplus::Color(40, 20, 15, 200),    // Contorno marrón oscuro
+        true,                               // Con sombra
+        Gdiplus::Color(0, 0, 0, 200)        // Sombra negra
+    );
+
+    // Opciones del menú
+    struct MenuOption
+    {
+        std::string id;
+        std::wstring text;
+        float yOffset;
+    };
+
+    std::vector<MenuOption> options = {
+        {"newgame", L"NUEVA PARTIDA", 380.0f},
+        {"continue", L"CONTINUAR", 460.0f},
+        {"options", L"OPCIONES", 540.0f},
+        {"exit", L"SALIR", 620.0f}};
+
+    for (const auto &opt : options)
+    {
+        MenuItem item;
+        item.text = opt.id;
+        item.x = (SCR_WIDTH - 400) / 2.0f;
+        item.y = opt.yOffset;
+        item.isSelected = false;
+
+        // Texto normal (blanco con contorno)
+        item.normalTexture = createStyledTextTexture(
+            opt.text.c_str(), L"Georgia", 32, 400, 60,
+            Gdiplus::Color(200, 200, 200, 255), // Gris claro
+            Gdiplus::Color(30, 15, 10, 200),    // Contorno oscuro
+            true,
+            Gdiplus::Color(0, 0, 0, 180));
+
+        // Texto seleccionado (rojo brillante con efecto de brillo)
+        item.selectedTexture = createStyledTextTexture(
+            opt.text.c_str(), L"Georgia", 36, 420, 65,
+            Gdiplus::Color(255, 80, 60, 255), // Rojo intenso
+            Gdiplus::Color(80, 20, 10, 220),  // Contorno rojo oscuro
+            true,
+            Gdiplus::Color(255, 40, 20, 100) // Sombra rojiza
+        );
+
+        menuItems.push_back(item);
+    }
+
     std::filesystem::path wallpaperPath = resourceDir.parent_path() / "Resource Files" / "shwallpaper.jpeg";
-    if (!std::filesystem::exists(wallpaperPath)) {
+    if (!std::filesystem::exists(wallpaperPath))
+    {
         wallpaperPath = std::filesystem::path("Resource Files") / "shwallpaper.jpeg";
     }
     unsigned int wallTexID = loadTextureFromJpeg(wallpaperPath.wstring().c_str());
 
     // Si la carga fue exitosa, llenamos los datos de la estructura
-    if (wallTexID != 0) {
+    if (wallTexID != 0)
+    {
         menuWallpaper.texture = wallTexID;
         menuWallpaper.width = SCR_WIDTH;   // Se estira al ancho de tu pantalla
         menuWallpaper.height = SCR_HEIGHT; // Se estira al alto de tu pantalla
         std::cout << "Wallpaper del menu cargado exitosamente con GDI+." << std::endl;
-    } else {
+    }
+    else
+    {
         std::cout << "Error: No se pudo cargar el wallpaper del menu." << std::endl;
     }
 
@@ -464,38 +895,35 @@ int main()
     initAudio();
 
     // create title and menu textures by ropchard
-        titleText =
-    createTextTexture(
-        L"SILENT HILL 2",
-        L"Georgia",
-        72,
-        800,
-        100,
-        Gdiplus::Color(255,255,255,255)
-    );
+    titleText =
+        createTextTexture(
+            L"SILENT HILL 2",
+            L"Georgia",
+            72,
+            800,
+            100,
+            Gdiplus::Color(255, 255, 255, 255));
 
     startText =
-    createTextTexture(
-        L"PRESS ENTER TO START",
-        L"Georgia",
-        36,
-        500,
-        50,
-        Gdiplus::Color(255,220,220,220)
-    );
+        createTextTexture(
+            L"PRESS ENTER TO START",
+            L"Georgia",
+            36,
+            500,
+            50,
+            Gdiplus::Color(255, 220, 220, 220));
 
     exitText =
-    createTextTexture(
-        L"ESC TO EXIT",
-        L"Georgia",
-        30,
-        300,
-        50,
-        Gdiplus::Color(255,180,180,180)
-    );
+        createTextTexture(
+            L"ESC TO EXIT",
+            L"Georgia",
+            30,
+            300,
+            50,
+            Gdiplus::Color(255, 180, 180, 180));
 
-
-    auto drawHudQuad = [&](unsigned int texture, float x, float y, float width, float height, const glm::vec3& color, float alpha) {
+    auto drawHudQuad = [&](unsigned int texture, float x, float y, float width, float height, const glm::vec3 &color, float alpha)
+    {
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(x + width * 0.5f, y + height * 0.5f, 0.0f));
         model = glm::scale(model, glm::vec3(width, height, 1.0f));
@@ -518,10 +946,11 @@ int main()
         std::filesystem::path("models") / "james" / "james_sunderland.glb",
         std::filesystem::path("..") / "models" / "james" / "james_sunderland.glb",
         resourceDir.parent_path() / "models" / "james" / "james_sunderland.glb",
-        resourceDir.parent_path().parent_path() / "models" / "james" / "james_sunderland.glb"
-    };
-    for (auto &p : jamesCandidates) {
-        if (std::filesystem::exists(p)) {
+        resourceDir.parent_path().parent_path() / "models" / "james" / "james_sunderland.glb"};
+    for (auto &p : jamesCandidates)
+    {
+        if (std::filesystem::exists(p))
+        {
             jamesModelPath = p.string();
             std::cout << "Found James model at: " << jamesModelPath << std::endl;
             break;
@@ -532,10 +961,11 @@ int main()
         std::filesystem::path("models") / "james" / "james_sunderland.glb",
         std::filesystem::path("..") / "models" / "james" / "james_sunderland.glb",
         resourceDir.parent_path() / "models" / "james" / "james_sunderland.glb",
-        resourceDir.parent_path().parent_path() / "models" / "james" / "james_sunderland.glb"
-    };
-    for (auto &p : jamesTextureFallbackCandidates) {
-        if (std::filesystem::exists(p)) {
+        resourceDir.parent_path().parent_path() / "models" / "james" / "james_sunderland.glb"};
+    for (auto &p : jamesTextureFallbackCandidates)
+    {
+        if (std::filesystem::exists(p))
+        {
             jamesFallbackTextures = loadMaterialTextureFallbacks(p.string(), jamesFallbackTexturesByName);
             std::cout << "Loaded James fallback textures from " << p.string() << ": " << jamesFallbackTextures.size() << std::endl;
             break;
@@ -553,21 +983,24 @@ int main()
     int jamesBoneCount = 0;
     glm::mat4 jamesGlobalInverseTransform(1.0f);
     float jamesRenderScale = 0.8f;
-    if (!jamesModelPath.empty()) {
+    if (!jamesModelPath.empty())
+    {
         jamesMeshes = loadModel(jamesModelPath, jamesAABBMin, jamesAABBMax, &jamesBoneInfo, &jamesBoneCount, &jamesGlobalInverseTransform);
         glm::vec3 jamesSize = jamesAABBMax - jamesAABBMin;
         float jamesHeight = glm::max(jamesSize.y, 0.001f);
         jamesRenderScale = 1.78f / jamesHeight;
         std::cout << "Loaded James meshes: " << jamesMeshes.size() << " bones=" << jamesBoneCount << std::endl;
         std::cout << "James size=(" << jamesSize.x << ", " << jamesSize.y << ", " << jamesSize.z << ") renderScale=" << jamesRenderScale << std::endl;
-        for (size_t i = 0; i < jamesMeshes.size(); ++i) {
+        for (size_t i = 0; i < jamesMeshes.size(); ++i)
+        {
             std::cout << " James Mesh[" << i << "] indices=" << jamesMeshes[i].indexCount << " tex=" << jamesMeshes[i].texture << std::endl;
         }
     }
 
     std::unordered_map<std::string, AnimationClip> jamesAnimations;
     std::filesystem::path animDir = resourceDir.parent_path() / "models" / "jamesanimations";
-    if (!std::filesystem::exists(animDir)) {
+    if (!std::filesystem::exists(animDir))
+    {
         animDir = resourceDir.parent_path().parent_path() / "models" / "jamesanimations";
     }
     std::vector<std::pair<std::string, std::string>> animFiles = {
@@ -577,17 +1010,21 @@ int main()
         {"strafe_right", "right strafe walking.fbx"},
         {"turn_left", "left turn 90.fbx"},
         {"turn_right", "right turn 90.fbx"},
-        {"jump", "jump.fbx"}
-    };
-    for (const auto& entry : animFiles) {
+        {"jump", "jump.fbx"}};
+    for (const auto &entry : animFiles)
+    {
         std::filesystem::path p = animDir / entry.second;
-        if (std::filesystem::exists(p)) {
+        if (std::filesystem::exists(p))
+        {
             AnimationClip clip = loadAnimationClip(p.string(), entry.first);
-            if (clip.valid) {
+            if (clip.valid)
+            {
                 jamesAnimations[entry.first] = clip;
                 std::cout << "Loaded animation: " << entry.first << " from " << p.string() << std::endl;
             }
-        } else {
+        }
+        else
+        {
             std::cout << "Animation not found: " << p.string() << std::endl;
         }
     }
@@ -605,10 +1042,11 @@ int main()
         resourceDir.parent_path() / "models" / "map" / "model.dae",
         resourceDir.parent_path() / "models" / "map" / "scene.dae",
         resourceDir.parent_path() / "models" / "model.dae",
-        resourceDir.parent_path() / "models" / "james" / "model.dae"
-    };
-    for (auto &p : mapCandidates) {
-        if (std::filesystem::exists(p)) {
+        resourceDir.parent_path() / "models" / "james" / "model.dae"};
+    for (auto &p : mapCandidates)
+    {
+        if (std::filesystem::exists(p))
+        {
             mapModelPath = p.string();
             std::cout << "Found map model at: " << mapModelPath << std::endl;
             break;
@@ -621,14 +1059,16 @@ int main()
     float mapScale = 1.0f;
     bool mapUsesZUp = false;
     glm::mat4 mapModelTransform = glm::mat4(1.0f);
-    if (!mapModelPath.empty()) {
+    if (!mapModelPath.empty())
+    {
         mapMeshes = loadModel(mapModelPath, mapAABBMin, mapAABBMax);
         glm::vec3 mapSize = mapAABBMax - mapAABBMin;
         std::string mapExt = std::filesystem::path(mapModelPath).extension().string();
         std::transform(mapExt.begin(), mapExt.end(), mapExt.begin(), ::tolower);
         mapUsesZUp = false;
         float mapHorizontalSize = glm::max(mapSize.x, mapSize.z);
-        if (mapHorizontalSize > 0.001f) {
+        if (mapHorizontalSize > 0.001f)
+        {
             mapScale = MAP_TARGET_SIZE / mapHorizontalSize;
         }
         playerGroundY = 0.0f;
@@ -637,11 +1077,14 @@ int main()
                   << " size=(" << mapSize.x << ", " << mapSize.y << ", " << mapSize.z << ")"
                   << " scale=" << mapScale
                   << " externalAxisFix=false" << std::endl;
-    } else {
+    }
+    else
+    {
         std::cout << "Map model path: NOT FOUND" << std::endl;
     }
 
-    if (!mapMeshes.empty()) {
+    if (!mapMeshes.empty())
+    {
         glm::vec3 mapCenter = (mapAABBMin + mapAABBMax) * 0.5f;
         mapModelTransform = glm::scale(mapModelTransform, glm::vec3(mapScale));
         mapModelTransform = glm::translate(mapModelTransform, glm::vec3(-mapCenter.x, -mapAABBMin.y, -mapCenter.z));
@@ -656,8 +1099,7 @@ int main()
 
     std::cout << "==================" << std::endl;
 
-
-// render loop
+    // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
     {
@@ -671,98 +1113,142 @@ int main()
         // -----
         processInput(window);
 
-    // =================================================================
-    // CASO A: REGLAS PARA EL MENÚ PRINCIPAL
-    // =================================================================
-            if (currentState == MENU)
+        // =================================================================
+        // CASO A: REGLAS PARA EL MENÚ PRINCIPAL
+        // =================================================================
+        if (currentState == MENU)
+        {
+            // Actualizar lógica del menú
+            updateMenu(window, deltaTime);
+
+            // Limpiar buffers
+            glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+            // Configurar proyección Ortogonal
+            glm::mat4 orthoProjection = glm::ortho(0.0f, (float)SCR_WIDTH, (float)SCR_HEIGHT, 0.0f, -1.0f, 1.0f);
+            glm::mat4 viewIdentity = glm::mat4(1.0f);
+
+            lightingShader.use();
+            lightingShader.setMat4("projection", orthoProjection);
+            lightingShader.setMat4("view", viewIdentity);
+            lightingShader.setInt("fogEnabled", 0);
+            lightingShader.setInt("useSkinning", 0);
+            lightingShader.setFloat("objectAlpha", 1.0f);
+            lightingShader.setInt("numPointLights", 0);
+            lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
+            lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
+            lightingShader.setFloat("material_ambientStrength", 1.0f);
+            lightingShader.setFloat("material_specularStrength", 0.0f);
+
+            // Dibujar wallpaper (con corrección de inversión)
+            if (menuWallpaper.texture != 0)
             {
-                // Limpiar buffers
-                glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                drawHudQuad(menuWallpaper.texture, 0.0f, 0.0f,
+                            (float)SCR_WIDTH, (float)SCR_HEIGHT,
+                            glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
+            }
+            else
+            {
+                drawHudQuad(getWhiteTexture(), 0.0f, 0.0f,
+                            (float)SCR_WIDTH, (float)SCR_HEIGHT,
+                            glm::vec3(0.1f, 0.05f, 0.05f), 1.0f);
+            }
 
-                glDisable(GL_DEPTH_TEST);
-                glDisable(GL_CULL_FACE);
+            // Dibujar título
+            // Al dibujar, centrar automáticamente
+            float titleX = (SCR_WIDTH - titleText.width) / 2.0f;
+            float titleY = 120.0f;
+            drawHudQuad(titleText.texture, titleX, titleY,
+                        (float)titleText.width, (float)titleText.height,
+                        glm::vec3(1.0f), 1.0f);
 
-                // Forzar el cursor visible en menús
-                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            // Dibujar opciones del menú
+            for (int i = 0; i < (int)menuItems.size(); i++)
+            {
+                bool isSelected = (i == selectedItemIndex);
+                HudTexture &tex = isSelected ? menuItems[i].selectedTexture : menuItems[i].normalTexture;
 
-                // Configurar proyección Ortogonal para HUD/Texturas 2D
-                glm::mat4 orthoProjection = glm::ortho(0.0f, (float)SCR_WIDTH, (float)SCR_HEIGHT, 0.0f, -1.0f, 1.0f);
-                glm::mat4 viewIdentity = glm::mat4(1.0f);
-
-                lightingShader.use();
-                lightingShader.setMat4("projection", orthoProjection);
-                lightingShader.setMat4("view", viewIdentity);
-                lightingShader.setInt("fogEnabled", 0);
-                lightingShader.setInt("useSkinning", 0);
-                lightingShader.setFloat("objectAlpha", 1.0f);
-                lightingShader.setFloat("emissiveStrength", 0.0f);
-                lightingShader.setInt("numPointLights", 0);  // Importante: desactivar luces puntuales
-                
-                // Configurar luz direccional por defecto
-                lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
-                lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
-                lightingShader.setFloat("material_ambientStrength", 1.0f);
-                lightingShader.setFloat("material_specularStrength", 0.0f);
-                
-                // Verificar que el wallpaper se cargó correctamente
-                if (menuWallpaper.texture == 0) {
-                    std::cout << "ERROR: menuWallpaper texture is 0, trying to reload..." << std::endl;
-                    std::filesystem::path wallpaperPath = resourceDir.parent_path() / "Resource Files" / "shwallpaper.jpeg";
-                    if (!std::filesystem::exists(wallpaperPath)) {
-                        wallpaperPath = std::filesystem::path("Resource Files") / "shwallpaper.jpeg";
-                    }
-                    unsigned int wallTexID = loadTextureFromJpeg(wallpaperPath.wstring().c_str());
-                    if (wallTexID != 0) {
-                        menuWallpaper.texture = wallTexID;
-                        menuWallpaper.width = SCR_WIDTH;
-                        menuWallpaper.height = SCR_HEIGHT;
-                        std::cout << "Wallpaper recargado exitosamente." << std::endl;
-                    } else {
-                        std::cout << "ERROR: No se pudo cargar el wallpaper." << std::endl;
-                    }
-                }
-                
-                // Dibujar wallpaper (fondo)
-                if (menuWallpaper.texture != 0) {
-                    drawHudQuad(menuWallpaper.texture, 0.0f, 0.0f,
-                                (float)SCR_WIDTH, (float)SCR_HEIGHT,
-                                glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
-                } else {
-                    // Fallback: color sólido oscuro
-                    drawHudQuad(getWhiteTexture(), 0.0f, 0.0f,
-                                (float)SCR_WIDTH, (float)SCR_HEIGHT,
-                                glm::vec3(0.1f, 0.05f, 0.05f), 1.0f);
+                // Efecto de animación para el seleccionado (pequeña escala)
+                float scaleX = 1.0f, scaleY = 1.0f;
+                if (isSelected)
+                {
+                    float pulse = 1.0f + sin(glfwGetTime() * 8.0f) * 0.03f;
+                    scaleX = pulse;
+                    scaleY = pulse;
                 }
 
-                // Configurar para textos (blending adecuado)
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                
-                // Dibujar elementos centrados en pantalla
-                if (titleText.texture != 0) {
-                    float titleX = (SCR_WIDTH - titleText.width) / 2.0f;
-                    float titleY = 150.0f; 
-                    drawHudQuad(titleText.texture, titleX, titleY, 
-                            (float)titleText.width, (float)titleText.height, 
-                            glm::vec3(1.2f, 1.2f, 1.2f), 1.0f);
-                }
+                drawHudQuad(tex.texture, menuItems[i].x, menuItems[i].y,
+                            (float)tex.width, (float)tex.height,
+                            glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
 
-                if (startText.texture != 0) {
-                    float startX = (SCR_WIDTH - startText.width) / 2.0f;
-                    float startY = 400.0f;
-                    drawHudQuad(startText.texture, startX, startY, 
-                            (float)startText.width, (float)startText.height, 
-                            glm::vec3(1.2f, 1.2f, 1.2f), 1.0f);
-                }
+                // Después de dibujar el wallpaper, agregar una capa oscura semitransparente
+                drawHudQuad(getWhiteTexture(), 0.0f, 0.0f,
+                            (float)SCR_WIDTH, (float)SCR_HEIGHT,
+                            glm::vec3(0.0f, 0.0f, 0.0f), 0.35f); // Overlay negro 35% opaco
+            }
+        }
 
-                if (exitText.texture != 0) {
-                    float exitX = (SCR_WIDTH - exitText.width) / 2.0f;
-                    float exitY = 500.0f;
-                    drawHudQuad(exitText.texture, exitX, exitY, 
-                            (float)exitText.width, (float)exitText.height, 
-                            glm::vec3(1.2f, 1.2f, 1.2f), 1.0f);
-                }
+        // En el bucle principal, después de processInput y antes del estado PLAYING
+        else if (currentState == CINEMATIC)
+        {
+            // Verificar si el video terminó
+            if (isCinematicFinished())
+            {
+                std::cout << "Cinemática finalizada, iniciando partida..." << std::endl;
+                closeCinematicPlayer();
+                currentState = PLAYING;
+                playerPosition = findSpawnPoint();
+                playerGroundY = findGroundHeight(playerPosition.x, playerPosition.z, playerPosition.y);
+                playerPosition.y = playerGroundY;
+            }
+
+            // Permitir saltar la cinemática con ESC, ENTER o SPACE
+            if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS ||
+                glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS ||
+                glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+            {
+
+                std::cout << "Saltando cinemática..." << std::endl;
+                closeCinematicPlayer();
+                currentState = PLAYING;
+                playerPosition = findSpawnPoint();
+                playerGroundY = findGroundHeight(playerPosition.x, playerPosition.z, playerPosition.y);
+                playerPosition.y = playerGroundY;
+            }
+
+            // Renderizar un fondo negro (el video se dibuja automáticamente)
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            // Mostrar texto "Presiona ESC para saltar"
+            glDisable(GL_DEPTH_TEST);
+            glEnable(GL_BLEND);
+
+            glm::mat4 orthoProjection = glm::ortho(0.0f, (float)SCR_WIDTH, (float)SCR_HEIGHT, 0.0f, -1.0f, 1.0f);
+            lightingShader.use();
+            lightingShader.setMat4("projection", orthoProjection);
+            lightingShader.setMat4("view", glm::mat4(1.0f));
+            lightingShader.setInt("fogEnabled", 0);
+
+            // Crear texto de skip (solo una vez)
+            static HudTexture skipText = createStyledTextTexture(
+                L"PRESIONA ENTER PARA SALTAR", L"Arial", 24, 400, 40,
+                Gdiplus::Color(200, 200, 200, 255),
+                Gdiplus::Color(0, 0, 0, 200), true, Gdiplus::Color(0, 0, 0, 200));
+
+            float textX = (SCR_WIDTH - skipText.width) / 2.0f;
+            float textY = SCR_HEIGHT - 60.0f;
+            drawHudQuad(skipText.texture, textX, textY,
+                        (float)skipText.width, (float)skipText.height,
+                        glm::vec3(1.0f), 0.7f);
         }
         // =================================================================
         // CASO B: REGLAS PARA EL JUEGO ACTIVO (PLAYING)
@@ -777,34 +1263,46 @@ int main()
             updateThirdPersonCamera();
 
             // 1. Manejo del árbol de Animación de James
-            const AnimationClip* desiredClip = findClip(jamesAnimations, "idle");
+            const AnimationClip *desiredClip = findClip(jamesAnimations, "idle");
             bool desiredLooping = true;
             bool forwardPressed = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
             bool backwardPressed = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
             bool leftPressed = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
             bool rightPressed = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
 
-            if (jumpRequested && findClip(jamesAnimations, "jump")) {
+            if (jumpRequested && findClip(jamesAnimations, "jump"))
+            {
                 desiredClip = findClip(jamesAnimations, "jump");
                 desiredLooping = false;
-            } else if ((forwardPressed || backwardPressed) && leftPressed && !rightPressed && findClip(jamesAnimations, "strafe_left")) {
+            }
+            else if ((forwardPressed || backwardPressed) && leftPressed && !rightPressed && findClip(jamesAnimations, "strafe_left"))
+            {
                 desiredClip = findClip(jamesAnimations, "strafe_left");
-            } else if ((forwardPressed || backwardPressed) && rightPressed && !leftPressed && findClip(jamesAnimations, "strafe_right")) {
+            }
+            else if ((forwardPressed || backwardPressed) && rightPressed && !leftPressed && findClip(jamesAnimations, "strafe_right"))
+            {
                 desiredClip = findClip(jamesAnimations, "strafe_right");
-            } else if ((forwardPressed || backwardPressed) && findClip(jamesAnimations, "walking")) {
+            }
+            else if ((forwardPressed || backwardPressed) && findClip(jamesAnimations, "walking"))
+            {
                 desiredClip = findClip(jamesAnimations, "walking");
-            } else if ((leftPressed || turnAnimationActive) && !rightPressed && findClip(jamesAnimations, "turn_left")) {
+            }
+            else if ((leftPressed || turnAnimationActive) && !rightPressed && findClip(jamesAnimations, "turn_left"))
+            {
                 desiredClip = findClip(jamesAnimations, "turn_left");
                 desiredLooping = false;
-            } else if ((rightPressed || turnAnimationActive) && !leftPressed && findClip(jamesAnimations, "turn_right")) {
+            }
+            else if ((rightPressed || turnAnimationActive) && !leftPressed && findClip(jamesAnimations, "turn_right"))
+            {
                 desiredClip = findClip(jamesAnimations, "turn_right");
                 desiredLooping = false;
             }
 
             updateAnimation(jamesAnimState, desiredClip, deltaTime, jamesBoneInfo, jamesBoneCount, jamesGlobalInverseTransform, desiredLooping);
             turnAnimationActive = desiredClip && !desiredLooping && desiredClip != findClip(jamesAnimations, "jump") && jamesAnimState.currentTime < desiredClip->duration - 1.0f;
-            
-            for (auto& matrix : jamesAnimState.finalMatrices) {
+
+            for (auto &matrix : jamesAnimState.finalMatrices)
+            {
                 matrix = glm::translate(glm::mat4(1.0f), JAMES_FBX_SKIN_OFFSET) *
                          glm::scale(glm::mat4(1.0f), glm::vec3(JAMES_FBX_SKIN_SCALE)) *
                          matrix;
@@ -854,14 +1352,17 @@ int main()
             }
 
             // 2. Dibujar el mapa / escenario
-            if (!mapMeshes.empty()) {
+            if (!mapMeshes.empty())
+            {
                 glEnable(GL_CULL_FACE);
                 glCullFace(GL_BACK);
                 glFrontFace(GL_CCW);
                 lightingShader.setMat4("model", mapModelTransform);
                 lightingShader.setFloat("alphaCutoff", 0.70f);
-                for (auto &m : mapMeshes) {
-                    if (!m.hasTexture) continue;
+                for (auto &m : mapMeshes)
+                {
+                    if (!m.hasTexture)
+                        continue;
                     lightingShader.setVec3("objectColor", m.materialColor);
                     lightingShader.setFloat("objectAlpha", m.materialAlpha);
                     glActiveTexture(GL_TEXTURE0);
@@ -877,7 +1378,8 @@ int main()
             }
 
             // 3. Dibujar el modelo animado de James (Skinning habilitado)
-            if (!jamesMeshes.empty()) {
+            if (!jamesMeshes.empty())
+            {
                 glm::mat4 jamesModel = glm::mat4(1.0f);
                 glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
                 float jamesMinY = jamesAABBMin.y;
@@ -887,14 +1389,16 @@ int main()
                 jamesModel = glm::rotate(jamesModel, glm::radians(MODEL_ROT_Z), glm::vec3(0.0f, 0.0f, 1.0f));
                 jamesModel = glm::scale(jamesModel, glm::vec3(jamesRenderScale));
                 jamesModel = glm::translate(jamesModel, glm::vec3(-jamesCenter.x, -jamesMinY, -jamesCenter.z));
-                
+
                 lightingShader.setMat4("model", jamesModel);
                 lightingShader.setInt("useSkinning", jamesBoneCount > 0 && jamesAnimState.current ? 1 : 0);
-                
-                for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i) {
+
+                for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i)
+                {
                     lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", jamesAnimState.finalMatrices[i]);
                 }
-                for (auto &m : jamesMeshes) {
+                for (auto &m : jamesMeshes)
+                {
                     lightingShader.setVec3("objectColor", m.materialColor);
                     lightingShader.setFloat("objectAlpha", m.materialAlpha);
                     glActiveTexture(GL_TEXTURE0);
@@ -933,7 +1437,7 @@ int main()
             lightingShader.setVec3("objectColor", 1.0f, 0.96f, 0.86f);
             lightingShader.setFloat("emissiveStrength", 0.65f);
             glDrawElements(GL_TRIANGLES, (GLsizei)saveDiskIndexCount, GL_UNSIGNED_INT, 0);
-            
+
             lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
             lightingShader.setFloat("emissiveStrength", 0.0f);
 
@@ -941,12 +1445,12 @@ int main()
             float saveDistance = glm::length(glm::vec2(playerPosition.x - savePointPosition.x, playerPosition.z - savePointPosition.z));
             bool savePointInRange = saveDistance <= SAVE_POINT_INTERACT_RADIUS;
 
-            if (saveMenuOpen || savePointInRange) 
+            if (saveMenuOpen || savePointInRange)
             {
                 // Configuración común para pintar elementos 2D superpuestos
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
-                
+
                 lightingShader.use();
                 lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
                 lightingShader.setMat4("view", glm::mat4(1.0f));
@@ -961,7 +1465,7 @@ int main()
                 lightingShader.setFloat("emissiveStrength", 0.0f);
                 lightingShader.setFloat("alphaCutoff", 0.01f);
 
-                if (saveMenuOpen) 
+                if (saveMenuOpen)
                 {
                     // Forzar cursor libre para seleccionar ranuras si fuera necesario
                     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -977,14 +1481,15 @@ int main()
                     drawHudQuad(getWhiteTexture(), 690.0f, 0.0f, 420.0f, static_cast<float>(SCR_HEIGHT), glm::vec3(0.34f, 0.0f, 0.0f), 0.12f);
 
                     // Renderizado del retrato 3D estilizado de James en el menú de guardado
-                    if (!jamesMeshes.empty()) {
+                    if (!jamesMeshes.empty())
+                    {
                         glEnable(GL_DEPTH_TEST);
                         glClear(GL_DEPTH_BUFFER_BIT);
                         glViewport(SCR_WIDTH / 2, 0, SCR_WIDTH / 2, SCR_HEIGHT);
-                        
+
                         glm::mat4 portraitProjection = glm::perspective(glm::radians(22.0f), (float)(SCR_WIDTH / 2) / (float)SCR_HEIGHT, 0.1f, 20.0f);
                         glm::mat4 portraitView = glm::lookAt(glm::vec3(0.0f, 2.35f, 3.35f), glm::vec3(0.0f, 2.35f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                        
+
                         glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
                         float jamesMinY = jamesAABBMin.y;
                         glm::mat4 portraitModel = glm::mat4(1.0f);
@@ -1006,21 +1511,23 @@ int main()
                         lightingShader.setFloat("objectAlpha", 0.55f);
                         lightingShader.setFloat("emissiveStrength", 0.04f);
                         lightingShader.setInt("useSkinning", jamesBoneCount > 0 && jamesAnimState.current ? 1 : 0);
-                        
-                        for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i) {
+
+                        for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i)
+                        {
                             lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", jamesAnimState.finalMatrices[i]);
                         }
-                        for (auto &m : jamesMeshes) {
+                        for (auto &m : jamesMeshes)
+                        {
                             lightingShader.setVec3("objectColor", glm::vec3(1.0f, 0.18f, 0.12f) * m.materialColor);
                             glActiveTexture(GL_TEXTURE0);
                             glBindTexture(GL_TEXTURE_2D, m.texture);
                             glBindVertexArray(m.VAO);
                             glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
                         }
-                        
+
                         glDisable(GL_DEPTH_TEST);
                         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT); // Restaurar Viewport completo
-                        
+
                         // Re-vincular configuraciones Ortogonales para los textos del menú
                         lightingShader.setInt("useSkinning", 0);
                         lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
@@ -1040,15 +1547,15 @@ int main()
                     drawHudQuad(saveLocationText.texture, 156.0f, 220.0f, static_cast<float>(saveLocationText.width), static_cast<float>(saveLocationText.height), glm::vec3(1.0f), 1.0f);
                     drawHudQuad(saveTimeText.texture, 500.0f, 220.0f, static_cast<float>(saveTimeText.width), static_cast<float>(saveTimeText.height), glm::vec3(1.0f), 1.0f);
                     drawHudQuad(savePromptText.texture, 948.0f, 660.0f, static_cast<float>(savePromptText.width), static_cast<float>(savePromptText.height), glm::vec3(1.0f), 1.0f);
-                } 
-                else if (savePointInRange) 
+                }
+                else if (savePointInRange)
                 {
                     // Si solo está cerca, muestra el indicador inferior derecho para interactuar (Letra E)
                     drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 32.0f, glm::vec3(0.12f, 0.0f, 0.0f), 0.48f);
                     drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 1.0f, glm::vec3(0.62f, 0.08f, 0.06f), 0.42f);
                     drawHudQuad(saveInteractText.texture, 645.0f, 630.0f, static_cast<float>(saveInteractText.width), static_cast<float>(saveInteractText.height), glm::vec3(1.0f), 1.0f);
                 }
-                
+
                 // Limpieza de estados HUD volviendo a configuraciones de juego estándar
                 lightingShader.setFloat("objectAlpha", 1.0f);
                 lightingShader.setFloat("alphaCutoff", 0.38f);
@@ -1067,21 +1574,33 @@ int main()
 
     // optional: de-allocate model resources
     // ------------------------------------------------------------------------
-    for (auto &m : jamesMeshes) {
-        if (m.VAO) glDeleteVertexArrays(1, &m.VAO);
-        if (m.VBO) glDeleteBuffers(1, &m.VBO);
-        if (m.EBO) glDeleteBuffers(1, &m.EBO);
-        if (m.texture) glDeleteTextures(1, &m.texture);
+    for (auto &m : jamesMeshes)
+    {
+        if (m.VAO)
+            glDeleteVertexArrays(1, &m.VAO);
+        if (m.VBO)
+            glDeleteBuffers(1, &m.VBO);
+        if (m.EBO)
+            glDeleteBuffers(1, &m.EBO);
+        if (m.texture)
+            glDeleteTextures(1, &m.texture);
     }
-    for (auto &m : mapMeshes) {
-        if (m.VAO) glDeleteVertexArrays(1, &m.VAO);
-        if (m.VBO) glDeleteBuffers(1, &m.VBO);
-        if (m.EBO) glDeleteBuffers(1, &m.EBO);
-        if (m.texture) glDeleteTextures(1, &m.texture);
+    for (auto &m : mapMeshes)
+    {
+        if (m.VAO)
+            glDeleteVertexArrays(1, &m.VAO);
+        if (m.VBO)
+            glDeleteBuffers(1, &m.VBO);
+        if (m.EBO)
+            glDeleteBuffers(1, &m.EBO);
+        if (m.texture)
+            glDeleteTextures(1, &m.texture);
     }
     shutdownAudio();
     Gdiplus::GdiplusShutdown(gdiplusToken);
 
+    // Antes de glfwTerminate(), agregar:
+    closeCinematicPlayer();
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
     glfwTerminate();
@@ -1093,23 +1612,24 @@ int main()
 void processInput(GLFWwindow *window)
 {
     // Global inputs that work in all states
-    if(currentState == MENU)
+    if (currentState == MENU)
     {
-        if(glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
+        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
             currentState = PLAYING;
 
-        if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-            glfwSetWindowShouldClose(window,true);
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+            glfwSetWindowShouldClose(window, true);
 
         return;
     }
 
-
     playerIsMoving = false;
     bool ePressed = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
     bool escapePressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-    if (saveMenuOpen) {
-        if ((ePressed && !eWasPressed) || escapePressed) {
+    if (saveMenuOpen)
+    {
+        if ((ePressed && !eWasPressed) || escapePressed)
+        {
             saveMenuOpen = false;
         }
         eWasPressed = ePressed;
@@ -1120,7 +1640,8 @@ void processInput(GLFWwindow *window)
         glfwSetWindowShouldClose(window, true);
 
     float saveDistance = glm::length(glm::vec2(playerPosition.x - savePointPosition.x, playerPosition.z - savePointPosition.z));
-    if (ePressed && !eWasPressed && saveDistance <= SAVE_POINT_INTERACT_RADIUS) {
+    if (ePressed && !eWasPressed && saveDistance <= SAVE_POINT_INTERACT_RADIUS)
+    {
         saveMenuOpen = true;
         eWasPressed = ePressed;
         return;
@@ -1141,23 +1662,32 @@ void processInput(GLFWwindow *window)
     bool aPressed = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
     bool dPressed = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
 
-    if (wPressed) movement += forward;
-    if (sPressed) movement -= forward;
-    if (aPressed && (wPressed || sPressed)) movement -= right;
-    if (dPressed && (wPressed || sPressed)) movement += right;
+    if (wPressed)
+        movement += forward;
+    if (sPressed)
+        movement -= forward;
+    if (aPressed && (wPressed || sPressed))
+        movement -= right;
+    if (dPressed && (wPressed || sPressed))
+        movement += right;
 
-    if (!wPressed && !sPressed) {
+    if (!wPressed && !sPressed)
+    {
         float turnSpeed = 110.0f * deltaTime;
-        if (aPressed && !dPressed) playerYaw -= turnSpeed;
-        if (dPressed && !aPressed) playerYaw += turnSpeed;
+        if (aPressed && !dPressed)
+            playerYaw -= turnSpeed;
+        if (dPressed && !aPressed)
+            playerYaw += turnSpeed;
     }
 
-    if (glm::length(movement) > 0.001f) {
+    if (glm::length(movement) > 0.001f)
+    {
         movement = glm::normalize(movement);
         float speed = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) ? 3.6f : 1.8f;
         glm::vec3 nextPosition = playerPosition + movement * speed * deltaTime;
         float nextGroundY = playerGroundY;
-        if (findGroundHeightAt(nextPosition.x, nextPosition.z, playerGroundY + 0.75f, nextGroundY)) {
+        if (findGroundHeightAt(nextPosition.x, nextPosition.z, playerGroundY + 0.75f, nextGroundY))
+        {
             playerGroundY = nextGroundY;
             nextPosition.y = playerGroundY;
             playerPosition = nextPosition;
@@ -1165,7 +1695,6 @@ void processInput(GLFWwindow *window)
             playerIsMoving = true;
         }
     }
-
 }
 
 void updateThirdPersonCamera()
@@ -1194,51 +1723,59 @@ void updateThirdPersonCamera()
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
 // ---------------------------------------------------------------------------------------------
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+void framebuffer_size_callback(GLFWwindow *window, int width, int height)
 {
-    // make sure the viewport matches the new window dimensions; note that width and 
+    // make sure the viewport matches the new window dimensions; note that width and
     // height will be significantly larger than specified on retina displays.
     glViewport(0, 0, width, height);
 }
 
-
 // glfw: whenever the mouse moves, this callback is called
 // -------------------------------------------------------
-void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
+void mouse_callback(GLFWwindow *window, double xposIn, double yposIn)
 {
-    float xpos = static_cast<float>(xposIn);
-    float ypos = static_cast<float>(yposIn);
-    if (firstMouse)
+    // Guardar posición del mouse para el menú
+    mouseX = xposIn;
+    mouseY = yposIn;
+
+    // Solo rotar cámara si estamos en PLAYING
+    if (currentState == PLAYING)
     {
+        float xpos = static_cast<float>(xposIn);
+        float ypos = static_cast<float>(yposIn);
+        if (firstMouse)
+        {
+            lastX = xpos;
+            lastY = ypos;
+            firstMouse = false;
+        }
+
+        float xoffset = xpos - lastX;
+        float yoffset = lastY - ypos;
+
         lastX = xpos;
         lastY = ypos;
-        firstMouse = false;
+
+        thirdPersonYaw += xoffset * 0.12f;
+        thirdPersonPitch += yoffset * 0.08f;
+        thirdPersonPitch = glm::clamp(thirdPersonPitch, -35.0f, 15.0f);
     }
-
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
-
-    lastX = xpos;
-    lastY = ypos;
-
-    thirdPersonYaw += xoffset * 0.12f;
-    thirdPersonPitch += yoffset * 0.08f;
-    thirdPersonPitch = glm::clamp(thirdPersonPitch, -35.0f, 15.0f);
 }
 
 // glfw: whenever the mouse scroll wheel scrolls, this callback is called
 // ----------------------------------------------------------------------
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
 {
     thirdPersonDistance -= static_cast<float>(yoffset) * 0.35f;
     thirdPersonDistance = glm::clamp(thirdPersonDistance, 1.9f, 5.8f);
 }
 
-bool audioCommand(const std::string& command)
+bool audioCommand(const std::string &command)
 {
     char errorText[256] = {};
     MCIERROR error = mciSendStringA(command.c_str(), nullptr, 0, nullptr);
-    if (error != 0) {
+    if (error != 0)
+    {
         mciGetErrorStringA(error, errorText, sizeof(errorText));
         std::cout << "Audio command failed: " << command << " -> " << errorText << std::endl;
         return false;
@@ -1251,29 +1788,36 @@ void initAudio()
     audioCommand("close bgm");
     audioCommand("close footsteps");
 
-    if (audioCommand("open \"sounds\\2-white-noiz.mp3\" type mpegvideo alias bgm")) {
+    if (audioCommand("open \"sounds\\2-white-noiz.mp3\" type mpegvideo alias bgm"))
+    {
         audioCommand("setaudio bgm volume to 95");
         audioCommand("play bgm repeat");
     }
 
-    if (audioCommand("open \"sounds\\walking_soft.wav\" type waveaudio alias footsteps")) {
+    if (audioCommand("open \"sounds\\walking_soft.wav\" type waveaudio alias footsteps"))
+    {
         audioCommand("setaudio footsteps volume to 1000");
     }
 }
 
 void updateFootstepAudio()
 {
-    if (playerIsMoving) {
+    if (playerIsMoving)
+    {
         footstepTimer -= deltaTime;
-        if (footstepTimer <= 0.0f) {
+        if (footstepTimer <= 0.0f)
+        {
             audioCommand("stop footsteps");
             audioCommand("seek footsteps to start");
-            if (audioCommand("play footsteps from 0")) {
+            if (audioCommand("play footsteps from 0"))
+            {
                 footstepsPlaying = true;
                 footstepTimer = 0.60f;
             }
         }
-    } else if (footstepsPlaying) {
+    }
+    else if (footstepsPlaying)
+    {
         audioCommand("stop footsteps");
         audioCommand("seek footsteps to start");
         footstepsPlaying = false;
@@ -1289,73 +1833,94 @@ void shutdownAudio()
     audioCommand("close bgm");
 }
 
-
-unsigned int loadTextureFromFile(const std::string &path, const std::string &directory, std::map<std::string,unsigned int> &loaded)
+unsigned int loadTextureFromFile(const std::string &path, const std::string &directory, std::map<std::string, unsigned int> &loaded)
 {
     std::string filename = path;
     // if path is relative, prepend directory
     std::filesystem::path inputPath(filename);
-    if (filename.size() && !inputPath.is_absolute() && filename.find(":/") == std::string::npos && filename.find(":\\") == std::string::npos && (filename.find("\\") != 0)) {
+    if (filename.size() && !inputPath.is_absolute() && filename.find(":/") == std::string::npos && filename.find(":\\") == std::string::npos && (filename.find("\\") != 0))
+    {
         filename = directory + "/" + filename;
     }
     // if the file does not exist (e.g. absolute path to another machine), try to locate it in local assets
-    if (!std::filesystem::exists(filename)) {
+    if (!std::filesystem::exists(filename))
+    {
         std::cout << "Texture file not found at original path: " << filename << ". Will try to locate in assets/" << std::endl;
         auto base = std::filesystem::path(filename).filename().string();
         std::filesystem::path candidate1 = std::filesystem::path("assets") / "textures" / base;
         std::filesystem::path candidate2 = std::filesystem::path("assets") / base;
         bool found = false;
-        if (std::filesystem::exists(candidate1)) {
+        if (std::filesystem::exists(candidate1))
+        {
             filename = candidate1.string();
             std::cout << "Found texture in: " << filename << std::endl;
             found = true;
         }
-        else if (std::filesystem::exists(candidate2)) {
+        else if (std::filesystem::exists(candidate2))
+        {
             filename = candidate2.string();
             std::cout << "Found texture in: " << filename << std::endl;
             found = true;
-        } else {
+        }
+        else
+        {
             // recursive search in assets/ tree
             std::vector<std::filesystem::path> searchRoots;
             searchRoots.push_back(std::filesystem::path(directory));
-            if (std::filesystem::path(directory).has_parent_path()) searchRoots.push_back(std::filesystem::path(directory).parent_path());
+            if (std::filesystem::path(directory).has_parent_path())
+                searchRoots.push_back(std::filesystem::path(directory).parent_path());
             searchRoots.push_back(std::filesystem::path("assets"));
             searchRoots.push_back(std::filesystem::path("..") / "assets");
-            for (auto &root : searchRoots) {
-                try {
-                    if (!std::filesystem::exists(root)) continue;
-                    for (auto& p : std::filesystem::recursive_directory_iterator(root)) {
-                        if (!p.is_regular_file()) continue;
-                        if (p.path().filename().string() == base) {
+            for (auto &root : searchRoots)
+            {
+                try
+                {
+                    if (!std::filesystem::exists(root))
+                        continue;
+                    for (auto &p : std::filesystem::recursive_directory_iterator(root))
+                    {
+                        if (!p.is_regular_file())
+                            continue;
+                        if (p.path().filename().string() == base)
+                        {
                             filename = p.path().string();
                             std::cout << "Found texture by recursive search: " << filename << std::endl;
                             found = true;
                             break;
                         }
                     }
-                } catch (std::filesystem::filesystem_error &e) {
+                }
+                catch (std::filesystem::filesystem_error &e)
+                {
                     std::cout << "Filesystem error while searching " << root.string() << ": " << e.what() << std::endl;
                 }
-                if (found) break;
+                if (found)
+                    break;
             }
-            if (!found) std::cout << "Could not find texture '" << base << "' in assets/; using empty texture" << std::endl;
+            if (!found)
+                std::cout << "Could not find texture '" << base << "' in assets/; using empty texture" << std::endl;
         }
     }
-    if (loaded.find(filename) != loaded.end()) return loaded[filename];
+    if (loaded.find(filename) != loaded.end())
+        return loaded[filename];
     std::string ext = filename.size() >= 4 ? filename.substr(filename.find_last_of('.') + 1) : std::string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
     unsigned int tex = 0;
-    if (ext != "tga" && ext != "ktx" && ext != "dds") {
+    if (ext != "tga" && ext != "ktx" && ext != "dds")
+    {
         std::wstring wfn(filename.begin(), filename.end());
         tex = loadTextureFromJpeg(wfn.c_str());
     }
-    if (tex == 0) {
-        if (ext == "tga" || ext == "ktx" || ext == "dds") {
+    if (tex == 0)
+    {
+        if (ext == "tga" || ext == "ktx" || ext == "dds")
+        {
             stbi_set_flip_vertically_on_load(1);
-            int w=0,h=0,n=0;
-            unsigned char* data = stbi_load(filename.c_str(), &w, &h, &n, 4);
-            if (data) {
+            int w = 0, h = 0, n = 0;
+            unsigned char *data = stbi_load(filename.c_str(), &w, &h, &n, 4);
+            if (data)
+            {
                 glGenTextures(1, &tex);
                 glBindTexture(GL_TEXTURE_2D, tex);
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1364,11 +1929,14 @@ unsigned int loadTextureFromFile(const std::string &path, const std::string &dir
                 glGenerateMipmap(GL_TEXTURE_2D);
                 stbi_image_free(data);
                 std::cout << "Loaded texture via stb_image: " << filename << std::endl;
-            } else {
+            }
+            else
+            {
                 std::cout << "stb_image failed to load: " << filename << " (" << stbi_failure_reason() << ")" << std::endl;
             }
         }
-        if (tex == 0) std::cout << "loadTextureFromFile: failed to create GL texture for '" << filename << "'" << std::endl;
+        if (tex == 0)
+            std::cout << "loadTextureFromFile: failed to create GL texture for '" << filename << "'" << std::endl;
     }
     loaded[filename] = tex;
     return tex;
@@ -1377,8 +1945,9 @@ unsigned int loadTextureFromFile(const std::string &path, const std::string &dir
 unsigned int getWhiteTexture()
 {
     static unsigned int whiteTex = 0;
-    if (whiteTex) return whiteTex;
-    unsigned char data[4] = { 255,255,255,255 };
+    if (whiteTex)
+        return whiteTex;
+    unsigned char data[4] = {255, 255, 255, 255};
     glGenTextures(1, &whiteTex);
     glBindTexture(GL_TEXTURE_2D, whiteTex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -1389,13 +1958,15 @@ unsigned int getWhiteTexture()
     return whiteTex;
 }
 
-unsigned int loadEmbeddedTexture(aiTexture* atex)
+unsigned int loadEmbeddedTexture(aiTexture *atex)
 {
     unsigned int glt = 0;
-    if (atex->mHeight == 0) {
-        int w=0,h=0,n=0;
-        unsigned char* img = stbi_load_from_memory((unsigned char*)atex->pcData, (int)atex->mWidth, &w, &h, &n, 4);
-        if (img) {
+    if (atex->mHeight == 0)
+    {
+        int w = 0, h = 0, n = 0;
+        unsigned char *img = stbi_load_from_memory((unsigned char *)atex->pcData, (int)atex->mWidth, &w, &h, &n, 4);
+        if (img)
+        {
             glGenTextures(1, &glt);
             glBindTexture(GL_TEXTURE_2D, glt);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1404,13 +1975,17 @@ unsigned int loadEmbeddedTexture(aiTexture* atex)
             glGenerateMipmap(GL_TEXTURE_2D);
             stbi_image_free(img);
         }
-    } else {
+    }
+    else
+    {
         int w = atex->mWidth;
         int h = atex->mHeight;
         std::vector<unsigned char> img(w * h * 4);
-        aiTexel* src = reinterpret_cast<aiTexel*>(atex->pcData);
-        for (int y = 0; y < h; ++y) {
-            for (int x = 0; x < w; ++x) {
+        aiTexel *src = reinterpret_cast<aiTexel *>(atex->pcData);
+        for (int y = 0; y < h; ++y)
+        {
+            for (int x = 0; x < w; ++x)
+            {
                 aiTexel &t = src[y * w + x];
                 size_t idx = (y * w + x) * 4;
                 img[idx + 0] = t.r;
@@ -1429,33 +2004,42 @@ unsigned int loadEmbeddedTexture(aiTexture* atex)
     return glt;
 }
 
-unsigned int loadMaterialTexture(aiMaterial* material, const aiScene* scene, const std::string& directory, std::map<std::string,unsigned int>& loaded)
+unsigned int loadMaterialTexture(aiMaterial *material, const aiScene *scene, const std::string &directory, std::map<std::string, unsigned int> &loaded)
 {
     std::vector<aiTextureType> textureTypes = {
         aiTextureType_BASE_COLOR,
         aiTextureType_DIFFUSE,
-        aiTextureType_UNKNOWN
-    };
+        aiTextureType_UNKNOWN};
 
-    for (aiTextureType type : textureTypes) {
-        if (material->GetTextureCount(type) == 0) continue;
+    for (aiTextureType type : textureTypes)
+    {
+        if (material->GetTextureCount(type) == 0)
+            continue;
         aiString str;
-        if (material->GetTexture(type, 0, &str) != AI_SUCCESS) continue;
+        if (material->GetTexture(type, 0, &str) != AI_SUCCESS)
+            continue;
         std::string texPath = str.C_Str();
-        if (texPath.empty()) continue;
+        if (texPath.empty())
+            continue;
 
-        if (texPath[0] == '*') {
+        if (texPath[0] == '*')
+        {
             int texIndex = atoi(texPath.c_str() + 1);
-            if (texIndex >= 0 && scene->mNumTextures > (unsigned)texIndex) {
+            if (texIndex >= 0 && scene->mNumTextures > (unsigned)texIndex)
+            {
                 return loadEmbeddedTexture(scene->mTextures[texIndex]);
             }
-        } else {
+        }
+        else
+        {
             unsigned int texture = loadTextureFromFile(texPath, directory, loaded);
-            if (texture != 0) return texture;
+            if (texture != 0)
+                return texture;
         }
     }
 
-    if (scene->mNumTextures > 0) {
+    if (scene->mNumTextures > 0)
+    {
         unsigned int textureIndex = material->GetName().length % scene->mNumTextures;
         return loadEmbeddedTexture(scene->mTextures[textureIndex]);
     }
@@ -1463,28 +2047,33 @@ unsigned int loadMaterialTexture(aiMaterial* material, const aiScene* scene, con
     return 0;
 }
 
-std::vector<unsigned int> loadMaterialTextureFallbacks(const std::string& path, std::unordered_map<std::string, unsigned int>& byName)
+std::vector<unsigned int> loadMaterialTextureFallbacks(const std::string &path, std::unordered_map<std::string, unsigned int> &byName)
 {
     std::vector<unsigned int> textures;
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate);
-    if (!scene) {
+    const aiScene *scene = importer.ReadFile(path, aiProcess_Triangulate);
+    if (!scene)
+    {
         std::cout << "Fallback texture source failed: " << path << " " << importer.GetErrorString() << std::endl;
         return textures;
     }
 
     std::string directory = ".";
     size_t pos = path.find_last_of("/\\");
-    if (pos != std::string::npos) directory = path.substr(0, pos);
+    if (pos != std::string::npos)
+        directory = path.substr(0, pos);
 
-    std::map<std::string,unsigned int> loaded;
-    for (unsigned int i = 0; i < scene->mNumMaterials; ++i) {
+    std::map<std::string, unsigned int> loaded;
+    for (unsigned int i = 0; i < scene->mNumMaterials; ++i)
+    {
         unsigned int tex = loadMaterialTexture(scene->mMaterials[i], scene, directory, loaded);
-        if (tex == 0) tex = getWhiteTexture();
+        if (tex == 0)
+            tex = getWhiteTexture();
         textures.push_back(tex);
         std::string name = scene->mMaterials[i]->GetName().C_Str();
         std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-        if (!name.empty()) byName[name] = tex;
+        if (!name.empty())
+            byName[name] = tex;
         std::cout << "Fallback material[" << i << "] name='" << scene->mMaterials[i]->GetName().C_Str() << "' tex=" << tex << std::endl;
     }
     return textures;
@@ -1496,9 +2085,11 @@ void applyTextureParams(bool generateMipmaps)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, generateMipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    if (generateMipmaps) {
-        const char* extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
-        if (extensions && std::strstr(extensions, "GL_EXT_texture_filter_anisotropic")) {
+    if (generateMipmaps)
+    {
+        const char *extensions = reinterpret_cast<const char *>(glGetString(GL_EXTENSIONS));
+        if (extensions && std::strstr(extensions, "GL_EXT_texture_filter_anisotropic"))
+        {
             GLfloat maxAniso = 0.0f;
             glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
             glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, glm::min(maxAniso, 8.0f));
@@ -1506,19 +2097,23 @@ void applyTextureParams(bool generateMipmaps)
     }
 }
 
-std::vector<WalkTriangle> buildWalkTriangles(const std::vector<MeshData>& meshes, const glm::mat4& modelTransform)
+std::vector<WalkTriangle> buildWalkTriangles(const std::vector<MeshData> &meshes, const glm::mat4 &modelTransform)
 {
     std::vector<WalkTriangle> triangles;
-    for (const auto& mesh : meshes) {
-        for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+    for (const auto &mesh : meshes)
+    {
+        for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+        {
             glm::vec3 a = glm::vec3(modelTransform * glm::vec4(mesh.positions[mesh.indices[i]], 1.0f));
             glm::vec3 b = glm::vec3(modelTransform * glm::vec4(mesh.positions[mesh.indices[i + 1]], 1.0f));
             glm::vec3 c = glm::vec3(modelTransform * glm::vec4(mesh.positions[mesh.indices[i + 2]], 1.0f));
             glm::vec3 normal = glm::cross(b - a, c - a);
             float area = glm::length(normal);
-            if (area < 0.0001f) continue;
+            if (area < 0.0001f)
+                continue;
             normal = glm::normalize(normal);
-            if (normal.y < 0.45f) continue;
+            if (normal.y < 0.45f)
+                continue;
 
             WalkTriangle tri{};
             tri.a = a;
@@ -1537,32 +2132,40 @@ std::vector<WalkTriangle> buildWalkTriangles(const std::vector<MeshData>& meshes
 
 glm::vec3 findSpawnPoint()
 {
-    if (walkTriangles.empty()) return glm::vec3(0.0f);
+    if (walkTriangles.empty())
+        return glm::vec3(0.0f);
 
     float lowestY = FLT_MAX;
-    for (const auto& tri : walkTriangles) {
+    for (const auto &tri : walkTriangles)
+    {
         glm::vec3 center = (tri.a + tri.b + tri.c) / 3.0f;
         lowestY = glm::min(lowestY, center.y);
     }
 
-    const WalkTriangle* best = nullptr;
+    const WalkTriangle *best = nullptr;
     float bestScore = -FLT_MAX;
-    for (const auto& tri : walkTriangles) {
+    for (const auto &tri : walkTriangles)
+    {
         glm::vec3 center = (tri.a + tri.b + tri.c) / 3.0f;
-        if (center.y > lowestY + 1.2f) continue;
+        if (center.y > lowestY + 1.2f)
+            continue;
         float distanceFromOrigin = glm::length(glm::vec2(center.x, center.z));
         float score = tri.area - distanceFromOrigin * 0.05f;
-        if (score > bestScore) {
+        if (score > bestScore)
+        {
             bestScore = score;
             best = &tri;
         }
     }
 
-    if (!best) {
-        for (const auto& tri : walkTriangles) {
+    if (!best)
+    {
+        for (const auto &tri : walkTriangles)
+        {
             glm::vec3 center = (tri.a + tri.b + tri.c) / 3.0f;
             float score = -center.y;
-            if (score > bestScore) {
+            if (score > bestScore)
+            {
                 bestScore = score;
                 best = &tri;
             }
@@ -1574,11 +2177,13 @@ glm::vec3 findSpawnPoint()
     return spawn;
 }
 
-bool findGroundHeightAt(float x, float z, float maxStepUp, float& outY)
+bool findGroundHeightAt(float x, float z, float maxStepUp, float &outY)
 {
     float bestY = -FLT_MAX;
-    for (const auto& tri : walkTriangles) {
-        if (x < tri.minX || x > tri.maxX || z < tri.minZ || z > tri.maxZ) continue;
+    for (const auto &tri : walkTriangles)
+    {
+        if (x < tri.minX || x > tri.maxX || z < tri.minZ || z > tri.maxZ)
+            continue;
 
         glm::vec2 a(tri.a.x, tri.a.z);
         glm::vec2 b(tri.b.x, tri.b.z);
@@ -1588,19 +2193,23 @@ bool findGroundHeightAt(float x, float z, float maxStepUp, float& outY)
         glm::vec2 v1 = c - a;
         glm::vec2 v2 = p - a;
         float den = v0.x * v1.y - v1.x * v0.y;
-        if (fabsf(den) < 0.000001f) continue;
+        if (fabsf(den) < 0.000001f)
+            continue;
 
         float u = (v2.x * v1.y - v1.x * v2.y) / den;
         float v = (v0.x * v2.y - v2.x * v0.y) / den;
         float w = 1.0f - u - v;
-        if (u >= -0.001f && v >= -0.001f && w >= -0.001f) {
+        if (u >= -0.001f && v >= -0.001f && w >= -0.001f)
+        {
             float y = w * tri.a.y + u * tri.b.y + v * tri.c.y;
-            if (y > bestY && y <= maxStepUp) {
+            if (y > bestY && y <= maxStepUp)
+            {
                 bestY = y;
             }
         }
     }
-    if (bestY > -FLT_MAX * 0.5f) {
+    if (bestY > -FLT_MAX * 0.5f)
+    {
         outY = bestY;
         return true;
     }
@@ -1613,22 +2222,25 @@ float findGroundHeight(float x, float z, float fallbackY)
     return findGroundHeightAt(x, z, fallbackY + 2.0f, y) ? y : fallbackY;
 }
 
-glm::vec3 closestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
+glm::vec3 closestPointOnTriangle(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c)
 {
     glm::vec3 ab = b - a;
     glm::vec3 ac = c - a;
     glm::vec3 ap = p - a;
     float d1 = glm::dot(ab, ap);
     float d2 = glm::dot(ac, ap);
-    if (d1 <= 0.0f && d2 <= 0.0f) return a;
+    if (d1 <= 0.0f && d2 <= 0.0f)
+        return a;
 
     glm::vec3 bp = p - b;
     float d3 = glm::dot(ab, bp);
     float d4 = glm::dot(ac, bp);
-    if (d3 >= 0.0f && d4 <= d3) return b;
+    if (d3 >= 0.0f && d4 <= d3)
+        return b;
 
     float vc = d1 * d4 - d3 * d2;
-    if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
+    if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f)
+    {
         float v = d1 / (d1 - d3);
         return a + v * ab;
     }
@@ -1636,16 +2248,19 @@ glm::vec3 closestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, const g
     glm::vec3 cp = p - c;
     float d5 = glm::dot(ab, cp);
     float d6 = glm::dot(ac, cp);
-    if (d6 >= 0.0f && d5 <= d6) return c;
+    if (d6 >= 0.0f && d5 <= d6)
+        return c;
 
     float vb = d5 * d2 - d1 * d6;
-    if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
+    if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f)
+    {
         float w = d2 / (d2 - d6);
         return a + w * ac;
     }
 
     float va = d3 * d6 - d5 * d4;
-    if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
+    if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f)
+    {
         float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
         return b + w * (c - b);
     }
@@ -1656,7 +2271,7 @@ glm::vec3 closestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, const g
     return a + ab * v + ac * w;
 }
 
-bool findWallAttachment(const std::vector<MeshData>& meshes, const glm::mat4& modelTransform, const glm::vec3& anchor, const glm::vec3& preferredNormal, glm::vec3& outPosition, glm::vec3& outNormal)
+bool findWallAttachment(const std::vector<MeshData> &meshes, const glm::mat4 &modelTransform, const glm::vec3 &anchor, const glm::vec3 &preferredNormal, glm::vec3 &outPosition, glm::vec3 &outNormal)
 {
     bool found = false;
     float bestScore = FLT_MAX;
@@ -1664,31 +2279,39 @@ bool findWallAttachment(const std::vector<MeshData>& meshes, const glm::mat4& mo
     const float minWallHeight = 1.15f;
     glm::vec3 preferred = glm::normalize(preferredNormal);
 
-    for (const auto& mesh : meshes) {
-        for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+    for (const auto &mesh : meshes)
+    {
+        for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+        {
             glm::vec3 a = glm::vec3(modelTransform * glm::vec4(mesh.positions[mesh.indices[i]], 1.0f));
             glm::vec3 b = glm::vec3(modelTransform * glm::vec4(mesh.positions[mesh.indices[i + 1]], 1.0f));
             glm::vec3 c = glm::vec3(modelTransform * glm::vec4(mesh.positions[mesh.indices[i + 2]], 1.0f));
             glm::vec3 normal = glm::cross(b - a, c - a);
             float doubleArea = glm::length(normal);
-            if (doubleArea < 0.12f) continue;
+            if (doubleArea < 0.12f)
+                continue;
 
             normal = glm::normalize(normal);
-            if (fabsf(normal.y) > 0.25f) continue;
+            if (fabsf(normal.y) > 0.25f)
+                continue;
 
             glm::vec3 closest = closestPointOnTriangle(anchor, a, b, c);
-            if (closest.y < minWallHeight) continue;
+            if (closest.y < minWallHeight)
+                continue;
 
             float distance = glm::length(closest - anchor);
-            if (distance > 6.0f) continue;
+            if (distance > 6.0f)
+                continue;
 
             float heightError = fabsf(closest.y - targetHeight);
             glm::vec3 outwardNormal = glm::dot(normal, preferred) < 0.0f ? -normal : normal;
             float normalMismatch = 1.0f - glm::max(glm::dot(outwardNormal, preferred), 0.0f);
-            if (normalMismatch > 0.55f) continue;
+            if (normalMismatch > 0.55f)
+                continue;
 
             float score = distance + heightError * 4.0f + normalMismatch * 8.0f - glm::min(doubleArea, 3.0f) * 0.08f;
-            if (score < bestScore) {
+            if (score < bestScore)
+            {
                 bestScore = score;
                 outNormal = outwardNormal;
                 outPosition = closest + outNormal * 0.018f;
@@ -1700,12 +2323,13 @@ bool findWallAttachment(const std::vector<MeshData>& meshes, const glm::mat4& mo
     return found;
 }
 
-glm::mat4 makeWallModel(const glm::vec3& position, const glm::vec3& normal, const glm::vec3& scale)
+glm::mat4 makeWallModel(const glm::vec3 &position, const glm::vec3 &normal, const glm::vec3 &scale)
 {
     glm::vec3 n = glm::normalize(normal);
     glm::vec3 up(0.0f, 1.0f, 0.0f);
     glm::vec3 right = glm::normalize(glm::cross(up, n));
-    if (glm::length(right) < 0.001f) right = glm::vec3(1.0f, 0.0f, 0.0f);
+    if (glm::length(right) < 0.001f)
+        right = glm::vec3(1.0f, 0.0f, 0.0f);
     glm::vec3 localUp = glm::normalize(glm::cross(n, right));
 
     glm::mat4 basis(1.0f);
@@ -1719,38 +2343,188 @@ glm::mat4 makeWallModel(const glm::vec3& position, const glm::vec3& normal, cons
 void createCube(unsigned int &VAO, unsigned int &indexCount)
 {
     float vertices[] = {
-        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
-         0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
-         0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
-        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
-        -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
-        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
-        -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
-         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
-         0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
-         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
-         0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
-         0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+        -0.5f,
+        -0.5f,
+        -0.5f,
+        0.0f,
+        0.0f,
+        -1.0f,
+        0.5f,
+        -0.5f,
+        -0.5f,
+        0.0f,
+        0.0f,
+        -1.0f,
+        0.5f,
+        0.5f,
+        -0.5f,
+        0.0f,
+        0.0f,
+        -1.0f,
+        -0.5f,
+        0.5f,
+        -0.5f,
+        0.0f,
+        0.0f,
+        -1.0f,
+        -0.5f,
+        -0.5f,
+        0.5f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.5f,
+        -0.5f,
+        0.5f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.5f,
+        0.5f,
+        0.5f,
+        0.0f,
+        0.0f,
+        1.0f,
+        -0.5f,
+        0.5f,
+        0.5f,
+        0.0f,
+        0.0f,
+        1.0f,
+        -0.5f,
+        0.5f,
+        0.5f,
+        -1.0f,
+        0.0f,
+        0.0f,
+        -0.5f,
+        0.5f,
+        -0.5f,
+        -1.0f,
+        0.0f,
+        0.0f,
+        -0.5f,
+        -0.5f,
+        -0.5f,
+        -1.0f,
+        0.0f,
+        0.0f,
+        -0.5f,
+        -0.5f,
+        0.5f,
+        -1.0f,
+        0.0f,
+        0.0f,
+        0.5f,
+        0.5f,
+        0.5f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.5f,
+        0.5f,
+        -0.5f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.5f,
+        -0.5f,
+        -0.5f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.5f,
+        -0.5f,
+        0.5f,
+        1.0f,
+        0.0f,
+        0.0f,
+        -0.5f,
+        -0.5f,
+        -0.5f,
+        0.0f,
+        -1.0f,
+        0.0f,
+        0.5f,
+        -0.5f,
+        -0.5f,
+        0.0f,
+        -1.0f,
+        0.0f,
+        0.5f,
+        -0.5f,
+        0.5f,
+        0.0f,
+        -1.0f,
+        0.0f,
+        -0.5f,
+        -0.5f,
+        0.5f,
+        0.0f,
+        -1.0f,
+        0.0f,
+        -0.5f,
+        0.5f,
+        -0.5f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.5f,
+        0.5f,
+        -0.5f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.5f,
+        0.5f,
+        0.5f,
+        0.0f,
+        1.0f,
+        0.0f,
+        -0.5f,
+        0.5f,
+        0.5f,
+        0.0f,
+        1.0f,
+        0.0f,
     };
     unsigned int indices[] = {
-        0, 1, 2, 2, 3, 0,
-        4, 6, 5, 4, 7, 6,
-        8, 9, 10, 10, 11, 8,
-        12, 14, 13, 12, 15, 14,
-        16, 18, 17, 16, 19, 18,
-        20, 21, 22, 22, 23, 20,
+        0,
+        1,
+        2,
+        2,
+        3,
+        0,
+        4,
+        6,
+        5,
+        4,
+        7,
+        6,
+        8,
+        9,
+        10,
+        10,
+        11,
+        8,
+        12,
+        14,
+        13,
+        12,
+        15,
+        14,
+        16,
+        18,
+        17,
+        16,
+        19,
+        18,
+        20,
+        21,
+        22,
+        22,
+        23,
+        20,
     };
 
     indexCount = 36;
@@ -1763,9 +2537,9 @@ void createCube(unsigned int &VAO, unsigned int &indexCount)
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 }
@@ -1773,14 +2547,46 @@ void createCube(unsigned int &VAO, unsigned int &indexCount)
 void createQuad(unsigned int &VAO, unsigned int &indexCount)
 {
     float vertices[] = {
-        -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
-         0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f,
-         0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 1.0f,
-        -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f,
+        -0.5f,
+        -0.5f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.5f,
+        -0.5f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f,
+        0.5f,
+        0.5f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        1.0f,
+        -0.5f,
+        0.5f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        1.0f,
     };
     unsigned int indices[] = {
-        0, 1, 2,
-        2, 3, 0,
+        0,
+        1,
+        2,
+        2,
+        3,
+        0,
     };
 
     indexCount = 6;
@@ -1793,11 +2599,11 @@ void createQuad(unsigned int &VAO, unsigned int &indexCount)
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
     glBindVertexArray(0);
 }
@@ -1809,14 +2615,16 @@ void createDisk(unsigned int &VAO, unsigned int &indexCount)
     std::vector<unsigned int> indices;
 
     vertices.insert(vertices.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 0.5f});
-    for (unsigned int i = 0; i <= segments; ++i) {
+    for (unsigned int i = 0; i <= segments; ++i)
+    {
         float angle = (float)i / (float)segments * 6.28318530718f;
         float x = cosf(angle) * 0.5f;
         float y = sinf(angle) * 0.5f;
         vertices.insert(vertices.end(), {x, y, 0.0f, 0.0f, 0.0f, 1.0f, x + 0.5f, y + 0.5f});
     }
 
-    for (unsigned int i = 1; i <= segments; ++i) {
+    for (unsigned int i = 1; i <= segments; ++i)
+    {
         indices.push_back(0);
         indices.push_back(i);
         indices.push_back(i + 1);
@@ -1832,51 +2640,62 @@ void createDisk(unsigned int &VAO, unsigned int &indexCount)
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
     glBindVertexArray(0);
 }
 
-MeshData processMesh(aiMesh* mesh, const aiScene* scene, const glm::mat4& transform, const std::string &directory, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string,unsigned int> &loaded, std::unordered_map<std::string, BoneInfo>* boneInfoMap, int* boneCounter)
+MeshData processMesh(aiMesh *mesh, const aiScene *scene, const glm::mat4 &transform, const std::string &directory, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string, unsigned int> &loaded, std::unordered_map<std::string, BoneInfo> *boneInfoMap, int *boneCounter)
 {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
     MeshData mdata;
     glm::mat3 normalTransform = glm::transpose(glm::inverse(glm::mat3(transform)));
     std::vector<BoneVertexData> boneData(mesh->mNumVertices);
-    for (auto& b : boneData) {
+    for (auto &b : boneData)
+    {
         b.ids.fill(-1);
         b.weights.fill(0.0f);
     }
-    if (boneInfoMap && boneCounter && mesh->HasBones()) {
+    if (boneInfoMap && boneCounter && mesh->HasBones())
+    {
         mdata.hasBones = true;
-        for (unsigned int boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
-            aiBone* bone = mesh->mBones[boneIndex];
+        for (unsigned int boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex)
+        {
+            aiBone *bone = mesh->mBones[boneIndex];
             std::string boneName = bone->mName.C_Str();
             int boneID = -1;
             auto found = boneInfoMap->find(boneName);
-            if (found == boneInfoMap->end()) {
-                if (*boneCounter >= MAX_BONES) continue;
+            if (found == boneInfoMap->end())
+            {
+                if (*boneCounter >= MAX_BONES)
+                    continue;
                 BoneInfo info;
                 info.id = *boneCounter;
                 info.offset = aiToGlm(bone->mOffsetMatrix);
                 (*boneInfoMap)[boneName] = info;
                 boneID = *boneCounter;
                 ++(*boneCounter);
-            } else {
+            }
+            else
+            {
                 boneID = found->second.id;
             }
 
-            for (unsigned int weightIndex = 0; weightIndex < bone->mNumWeights; ++weightIndex) {
+            for (unsigned int weightIndex = 0; weightIndex < bone->mNumWeights; ++weightIndex)
+            {
                 unsigned int vertexId = bone->mWeights[weightIndex].mVertexId;
                 float weight = bone->mWeights[weightIndex].mWeight;
-                if (vertexId >= boneData.size()) continue;
-                for (int slot = 0; slot < MAX_BONE_INFLUENCE; ++slot) {
-                    if (boneData[vertexId].ids[slot] < 0) {
+                if (vertexId >= boneData.size())
+                    continue;
+                for (int slot = 0; slot < MAX_BONE_INFLUENCE; ++slot)
+                {
+                    if (boneData[vertexId].ids[slot] < 0)
+                    {
                         boneData[vertexId].ids[slot] = boneID;
                         boneData[vertexId].weights[slot] = weight;
                         break;
@@ -1903,32 +2722,44 @@ MeshData processMesh(aiMesh* mesh, const aiScene* scene, const glm::mat4& transf
         aabbMax.y = std::max(aabbMax.y, pos.y);
         aabbMax.z = std::max(aabbMax.z, pos.z);
         // normal
-        if (mesh->HasNormals()) {
+        if (mesh->HasNormals())
+        {
             glm::vec3 normal = glm::normalize(vertexNormalTransform * glm::vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z));
             vertices.push_back(normal.x);
             vertices.push_back(normal.y);
             vertices.push_back(normal.z);
-        } else {
-            vertices.push_back(0.0f); vertices.push_back(0.0f); vertices.push_back(0.0f);
+        }
+        else
+        {
+            vertices.push_back(0.0f);
+            vertices.push_back(0.0f);
+            vertices.push_back(0.0f);
         }
         // texcoords
-        if (mesh->mTextureCoords[0]) {
+        if (mesh->mTextureCoords[0])
+        {
             vertices.push_back(mesh->mTextureCoords[0][i].x);
             vertices.push_back(mesh->mTextureCoords[0][i].y);
-        } else {
-            vertices.push_back(0.0f); vertices.push_back(0.0f);
         }
-        for (int slot = 0; slot < MAX_BONE_INFLUENCE; ++slot) {
+        else
+        {
+            vertices.push_back(0.0f);
+            vertices.push_back(0.0f);
+        }
+        for (int slot = 0; slot < MAX_BONE_INFLUENCE; ++slot)
+        {
             vertices.push_back(static_cast<float>(boneData[i].ids[slot]));
         }
-        for (int slot = 0; slot < MAX_BONE_INFLUENCE; ++slot) {
+        for (int slot = 0; slot < MAX_BONE_INFLUENCE; ++slot)
+        {
             vertices.push_back(boneData[i].weights[slot]);
         }
     }
     for (unsigned int i = 0; i < mesh->mNumFaces; ++i)
     {
         aiFace face = mesh->mFaces[i];
-        for (unsigned int j = 0; j < face.mNumIndices; ++j) {
+        for (unsigned int j = 0; j < face.mNumIndices; ++j)
+        {
             indices.push_back(face.mIndices[j]);
             mdata.indices.push_back(face.mIndices[j]);
         }
@@ -1948,43 +2779,50 @@ MeshData processMesh(aiMesh* mesh, const aiScene* scene, const glm::mat4& transf
 
     const GLsizei vertexStride = (8 + MAX_BONE_INFLUENCE + MAX_BONE_INFLUENCE) * sizeof(float);
     // pos
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, vertexStride, (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, vertexStride, (void *)0);
     glEnableVertexAttribArray(0);
     // normal
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, vertexStride, (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, vertexStride, (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     // tex
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, vertexStride, (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, vertexStride, (void *)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, vertexStride, (void*)(8 * sizeof(float)));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, vertexStride, (void *)(8 * sizeof(float)));
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, vertexStride, (void*)((8 + MAX_BONE_INFLUENCE) * sizeof(float)));
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, vertexStride, (void *)((8 + MAX_BONE_INFLUENCE) * sizeof(float)));
     glEnableVertexAttribArray(4);
 
     glBindVertexArray(0);
 
     // load material textures (diffuse), including embedded textures in glTF/.glb
     unsigned int texid = 0;
-    if (mesh->mMaterialIndex >= 0) {
-        aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+    if (mesh->mMaterialIndex >= 0)
+    {
+        aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
         aiColor4D diffuseColor(1.0f, 1.0f, 1.0f, 1.0f);
-        if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor)) {
+        if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
+        {
             mdata.materialColor = glm::vec3(diffuseColor.r, diffuseColor.g, diffuseColor.b);
             mdata.materialAlpha = diffuseColor.a;
         }
         float opacity = 1.0f;
-        if (AI_SUCCESS == material->Get(AI_MATKEY_OPACITY, opacity)) {
+        if (AI_SUCCESS == material->Get(AI_MATKEY_OPACITY, opacity))
+        {
             mdata.materialAlpha *= opacity;
         }
         texid = loadMaterialTexture(material, scene, directory, loaded);
-        if (texid == 0 && boneInfoMap && !jamesFallbackTextures.empty()) {
+        if (texid == 0 && boneInfoMap && !jamesFallbackTextures.empty())
+        {
             std::string materialName = material->GetName().C_Str();
             std::string lowerName = materialName;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
             auto namedFallback = jamesFallbackTexturesByName.find(lowerName);
-            if (namedFallback != jamesFallbackTexturesByName.end()) {
+            if (namedFallback != jamesFallbackTexturesByName.end())
+            {
                 texid = namedFallback->second;
-            } else {
+            }
+            else
+            {
                 texid = jamesFallbackTextures[mesh->mMaterialIndex % jamesFallbackTextures.size()];
             }
             std::cout << "James FBX material fallback meshMat=" << mesh->mMaterialIndex
@@ -1995,33 +2833,33 @@ MeshData processMesh(aiMesh* mesh, const aiScene* scene, const glm::mat4& transf
     }
     mdata.hasTexture = texid != 0;
     mdata.texture = texid;
-    if (mdata.texture == 0) mdata.texture = getWhiteTexture();
+    if (mdata.texture == 0)
+        mdata.texture = getWhiteTexture();
     return mdata;
 }
 
-glm::mat4 aiToGlm(const aiMatrix4x4& from)
+glm::mat4 aiToGlm(const aiMatrix4x4 &from)
 {
     return glm::mat4(
         from.a1, from.b1, from.c1, from.d1,
         from.a2, from.b2, from.c2, from.d2,
         from.a3, from.b3, from.c3, from.d3,
-        from.a4, from.b4, from.c4, from.d4
-    );
+        from.a4, from.b4, from.c4, from.d4);
 }
 
-void processNode(const aiScene* scene, aiNode* node, const glm::mat4& parentTransform, const std::string &directory, std::vector<MeshData> &meshes, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string,unsigned int> &loaded, std::unordered_map<std::string, BoneInfo>* boneInfoMap, int* boneCounter)
+void processNode(const aiScene *scene, aiNode *node, const glm::mat4 &parentTransform, const std::string &directory, std::vector<MeshData> &meshes, glm::vec3 &aabbMin, glm::vec3 &aabbMax, std::map<std::string, unsigned int> &loaded, std::unordered_map<std::string, BoneInfo> *boneInfoMap, int *boneCounter)
 {
     glm::mat4 nodeTransform = parentTransform * aiToGlm(node->mTransformation);
     for (unsigned int i = 0; i < node->mNumMeshes; ++i)
     {
-        aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+        aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
         meshes.push_back(processMesh(mesh, scene, nodeTransform, directory, aabbMin, aabbMax, loaded, boneInfoMap, boneCounter));
     }
     for (unsigned int i = 0; i < node->mNumChildren; ++i)
         processNode(scene, node->mChildren[i], nodeTransform, directory, meshes, aabbMin, aabbMax, loaded, boneInfoMap, boneCounter);
 }
 
-std::vector<MeshData> loadModel(const std::string &path, glm::vec3 &outAABBMin, glm::vec3 &outAABBMax, std::unordered_map<std::string, BoneInfo>* boneInfoMap, int* boneCounter, glm::mat4* outGlobalInverse)
+std::vector<MeshData> loadModel(const std::string &path, glm::vec3 &outAABBMin, glm::vec3 &outAABBMax, std::unordered_map<std::string, BoneInfo> *boneInfoMap, int *boneCounter, glm::mat4 *outGlobalInverse)
 {
     Assimp::Importer importer;
     std::string ext = std::filesystem::path(path).extension().string();
@@ -2030,74 +2868,85 @@ std::vector<MeshData> loadModel(const std::string &path, glm::vec3 &outAABBMin, 
                                aiProcess_GenSmoothNormals |
                                aiProcess_JoinIdenticalVertices |
                                aiProcess_ImproveCacheLocality;
-    if (ext != ".dae") {
+    if (ext != ".dae")
+    {
         importFlags |= aiProcess_FlipUVs;
     }
-    const aiScene* scene = importer.ReadFile(path, importFlags);
+    const aiScene *scene = importer.ReadFile(path, importFlags);
     std::vector<MeshData> meshes;
-    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+    {
         std::cerr << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
         return meshes;
     }
-    if (outGlobalInverse) {
+    if (outGlobalInverse)
+    {
         *outGlobalInverse = glm::inverse(aiToGlm(scene->mRootNode->mTransformation));
     }
     // get directory
     std::string directory = path;
     size_t pos = directory.find_last_of("/\\");
-    if (pos != std::string::npos) directory = directory.substr(0, pos);
-    else directory = ".";
-    std::map<std::string,unsigned int> loaded;
+    if (pos != std::string::npos)
+        directory = directory.substr(0, pos);
+    else
+        directory = ".";
+    std::map<std::string, unsigned int> loaded;
     processNode(scene, scene->mRootNode, glm::mat4(1.0f), directory, meshes, outAABBMin, outAABBMax, loaded, boneInfoMap, boneCounter);
     return meshes;
 }
 
-AnimNode readAnimHierarchy(aiNode* node)
+AnimNode readAnimHierarchy(aiNode *node)
 {
     AnimNode data;
     data.name = node->mName.C_Str();
     data.transform = aiToGlm(node->mTransformation);
     data.children.reserve(node->mNumChildren);
-    for (unsigned int i = 0; i < node->mNumChildren; ++i) {
+    for (unsigned int i = 0; i < node->mNumChildren; ++i)
+    {
         data.children.push_back(readAnimHierarchy(node->mChildren[i]));
     }
     return data;
 }
 
-AnimationClip loadAnimationClip(const std::string& path, const std::string& name)
+AnimationClip loadAnimationClip(const std::string &path, const std::string &name)
 {
     AnimationClip clip;
     clip.name = name;
 
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_LimitBoneWeights);
-    if (!scene || !scene->mRootNode || scene->mNumAnimations == 0) {
+    const aiScene *scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_LimitBoneWeights);
+    if (!scene || !scene->mRootNode || scene->mNumAnimations == 0)
+    {
         std::cout << "Animation load failed: " << path << " " << importer.GetErrorString() << std::endl;
         return clip;
     }
 
-    aiAnimation* anim = scene->mAnimations[0];
+    aiAnimation *anim = scene->mAnimations[0];
     clip.duration = static_cast<float>(anim->mDuration);
     clip.ticksPerSecond = anim->mTicksPerSecond != 0.0 ? static_cast<float>(anim->mTicksPerSecond) : 25.0f;
     clip.root = readAnimHierarchy(scene->mRootNode);
 
-    for (unsigned int i = 0; i < anim->mNumChannels; ++i) {
-        aiNodeAnim* channel = anim->mChannels[i];
+    for (unsigned int i = 0; i < anim->mNumChannels; ++i)
+    {
+        aiNodeAnim *channel = anim->mChannels[i];
         AnimChannel out;
         out.name = channel->mNodeName.C_Str();
         out.positions.reserve(channel->mNumPositionKeys);
         out.rotations.reserve(channel->mNumRotationKeys);
         out.scales.reserve(channel->mNumScalingKeys);
 
-        for (unsigned int key = 0; key < channel->mNumPositionKeys; ++key) {
+        for (unsigned int key = 0; key < channel->mNumPositionKeys; ++key)
+        {
             aiVector3D v = channel->mPositionKeys[key].mValue;
             out.positions.push_back({glm::vec3(v.x, v.y, v.z), static_cast<float>(channel->mPositionKeys[key].mTime)});
         }
-        for (unsigned int key = 0; key < channel->mNumRotationKeys; ++key) {
+        for (unsigned int key = 0; key < channel->mNumRotationKeys; ++key)
+        {
             aiQuaternion q = channel->mRotationKeys[key].mValue;
             out.rotations.push_back({glm::normalize(glm::quat(q.w, q.x, q.y, q.z)), static_cast<float>(channel->mRotationKeys[key].mTime)});
         }
-        for (unsigned int key = 0; key < channel->mNumScalingKeys; ++key) {
+        for (unsigned int key = 0; key < channel->mNumScalingKeys; ++key)
+        {
             aiVector3D v = channel->mScalingKeys[key].mValue;
             out.scales.push_back({glm::vec3(v.x, v.y, v.z), static_cast<float>(channel->mScalingKeys[key].mTime)});
         }
@@ -2109,10 +2958,12 @@ AnimationClip loadAnimationClip(const std::string& path, const std::string& name
 }
 
 template <typename KeyT>
-int getKeyIndex(const std::vector<KeyT>& keys, float animationTime)
+int getKeyIndex(const std::vector<KeyT> &keys, float animationTime)
 {
-    for (int i = 0; i + 1 < static_cast<int>(keys.size()); ++i) {
-        if (animationTime < keys[i + 1].timeStamp) return i;
+    for (int i = 0; i + 1 < static_cast<int>(keys.size()); ++i)
+    {
+        if (animationTime < keys[i + 1].timeStamp)
+            return i;
     }
     return glm::max(0, static_cast<int>(keys.size()) - 2);
 }
@@ -2120,37 +2971,47 @@ int getKeyIndex(const std::vector<KeyT>& keys, float animationTime)
 float getScaleFactor(float lastTime, float nextTime, float animationTime)
 {
     float span = nextTime - lastTime;
-    if (fabsf(span) < 0.00001f) return 0.0f;
+    if (fabsf(span) < 0.00001f)
+        return 0.0f;
     return glm::clamp((animationTime - lastTime) / span, 0.0f, 1.0f);
 }
 
-glm::mat4 interpolateChannelTransform(const AnimChannel& channel, float animationTime)
+glm::mat4 interpolateChannelTransform(const AnimChannel &channel, float animationTime)
 {
     glm::vec3 translation(0.0f);
     glm::quat rotation(1.0f, 0.0f, 0.0f, 0.0f);
     glm::vec3 scale(1.0f);
 
-    if (channel.positions.size() == 1) {
+    if (channel.positions.size() == 1)
+    {
         translation = channel.positions[0].position;
-    } else if (channel.positions.size() > 1) {
+    }
+    else if (channel.positions.size() > 1)
+    {
         int index = getKeyIndex(channel.positions, animationTime);
         int next = index + 1;
         float factor = getScaleFactor(channel.positions[index].timeStamp, channel.positions[next].timeStamp, animationTime);
         translation = glm::mix(channel.positions[index].position, channel.positions[next].position, factor);
     }
 
-    if (channel.rotations.size() == 1) {
+    if (channel.rotations.size() == 1)
+    {
         rotation = channel.rotations[0].orientation;
-    } else if (channel.rotations.size() > 1) {
+    }
+    else if (channel.rotations.size() > 1)
+    {
         int index = getKeyIndex(channel.rotations, animationTime);
         int next = index + 1;
         float factor = getScaleFactor(channel.rotations[index].timeStamp, channel.rotations[next].timeStamp, animationTime);
         rotation = glm::normalize(glm::slerp(channel.rotations[index].orientation, channel.rotations[next].orientation, factor));
     }
 
-    if (channel.scales.size() == 1) {
+    if (channel.scales.size() == 1)
+    {
         scale = channel.scales[0].scale;
-    } else if (channel.scales.size() > 1) {
+    }
+    else if (channel.scales.size() > 1)
+    {
         int index = getKeyIndex(channel.scales, animationTime);
         int next = index + 1;
         float factor = getScaleFactor(channel.scales[index].timeStamp, channel.scales[next].timeStamp, animationTime);
@@ -2160,14 +3021,14 @@ glm::mat4 interpolateChannelTransform(const AnimChannel& channel, float animatio
     return glm::translate(glm::mat4(1.0f), translation) * glm::toMat4(rotation) * glm::scale(glm::mat4(1.0f), scale);
 }
 
-glm::mat4 interpolateChannelTransformNoTranslation(const AnimChannel& channel, float animationTime)
+glm::mat4 interpolateChannelTransformNoTranslation(const AnimChannel &channel, float animationTime)
 {
     glm::mat4 transform = interpolateChannelTransform(channel, animationTime);
     transform[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     return transform;
 }
 
-bool shouldStripTranslation(const std::string& nodeName)
+bool shouldStripTranslation(const std::string &nodeName)
 {
     std::string lower = nodeName;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -2178,65 +3039,77 @@ bool shouldStripTranslation(const std::string& nodeName)
            lower.find("mixamorig:hips") != std::string::npos;
 }
 
-void calculateBoneTransforms(const AnimNode& node, const glm::mat4& parentTransform, const AnimationClip& clip, std::vector<glm::mat4>& finalMatrices, const std::unordered_map<std::string, BoneInfo>& boneInfoMap)
+void calculateBoneTransforms(const AnimNode &node, const glm::mat4 &parentTransform, const AnimationClip &clip, std::vector<glm::mat4> &finalMatrices, const std::unordered_map<std::string, BoneInfo> &boneInfoMap)
 {
     glm::mat4 nodeTransform = node.transform;
     auto channel = clip.channels.find(node.name);
-    if (channel != clip.channels.end()) {
+    if (channel != clip.channels.end())
+    {
         nodeTransform = interpolateChannelTransform(channel->second, clip.duration > 0.0f ? fmodf(clip.duration, clip.duration) : 0.0f);
     }
 
     glm::mat4 globalTransform = parentTransform * nodeTransform;
     auto bone = boneInfoMap.find(node.name);
-    if (bone != boneInfoMap.end() && bone->second.id < MAX_BONES) {
+    if (bone != boneInfoMap.end() && bone->second.id < MAX_BONES)
+    {
         finalMatrices[bone->second.id] = globalTransform * bone->second.offset;
     }
 
-    for (const auto& child : node.children) {
+    for (const auto &child : node.children)
+    {
         calculateBoneTransforms(child, globalTransform, clip, finalMatrices, boneInfoMap);
     }
 }
 
-void calculateBoneTransformsAtTime(const AnimNode& node, const glm::mat4& parentTransform, const AnimationClip& clip, float animationTime, std::vector<glm::mat4>& finalMatrices, const std::unordered_map<std::string, BoneInfo>& boneInfoMap, const glm::mat4& globalInverseTransform, bool isRoot)
+void calculateBoneTransformsAtTime(const AnimNode &node, const glm::mat4 &parentTransform, const AnimationClip &clip, float animationTime, std::vector<glm::mat4> &finalMatrices, const std::unordered_map<std::string, BoneInfo> &boneInfoMap, const glm::mat4 &globalInverseTransform, bool isRoot)
 {
     glm::mat4 nodeTransform = node.transform;
     auto channel = clip.channels.find(node.name);
-    if (channel != clip.channels.end()) {
+    if (channel != clip.channels.end())
+    {
         nodeTransform = (isRoot || shouldStripTranslation(node.name))
-            ? interpolateChannelTransformNoTranslation(channel->second, animationTime)
-            : interpolateChannelTransform(channel->second, animationTime);
+                            ? interpolateChannelTransformNoTranslation(channel->second, animationTime)
+                            : interpolateChannelTransform(channel->second, animationTime);
     }
 
     glm::mat4 globalTransform = parentTransform * nodeTransform;
     auto bone = boneInfoMap.find(node.name);
-    if (bone != boneInfoMap.end() && bone->second.id < MAX_BONES) {
+    if (bone != boneInfoMap.end() && bone->second.id < MAX_BONES)
+    {
         finalMatrices[bone->second.id] = globalInverseTransform * globalTransform * bone->second.offset;
     }
 
-    for (const auto& child : node.children) {
+    for (const auto &child : node.children)
+    {
         calculateBoneTransformsAtTime(child, globalTransform, clip, animationTime, finalMatrices, boneInfoMap, globalInverseTransform, false);
     }
 }
 
-void updateAnimation(AnimationState& state, const AnimationClip* clip, float deltaSeconds, const std::unordered_map<std::string, BoneInfo>& boneInfoMap, int boneCount, const glm::mat4& globalInverseTransform, bool looping)
+void updateAnimation(AnimationState &state, const AnimationClip *clip, float deltaSeconds, const std::unordered_map<std::string, BoneInfo> &boneInfoMap, int boneCount, const glm::mat4 &globalInverseTransform, bool looping)
 {
-    if (!clip || !clip->valid || boneCount <= 0) {
+    if (!clip || !clip->valid || boneCount <= 0)
+    {
         state.finalMatrices.assign(MAX_BONES, glm::mat4(1.0f));
         state.current = nullptr;
         state.currentTime = 0.0f;
         return;
     }
 
-    if (state.current != clip) {
+    if (state.current != clip)
+    {
         state.current = clip;
         state.currentTime = 0.0f;
         state.currentLooping = looping;
     }
     state.currentTime += clip->ticksPerSecond * deltaSeconds;
-    if (clip->duration > 0.0f) {
-        if (looping) {
+    if (clip->duration > 0.0f)
+    {
+        if (looping)
+        {
             state.currentTime = fmodf(state.currentTime, clip->duration);
-        } else {
+        }
+        else
+        {
             state.currentTime = glm::min(state.currentTime, glm::max(0.0f, clip->duration - 1.0f));
         }
     }
@@ -2245,7 +3118,7 @@ void updateAnimation(AnimationState& state, const AnimationClip* clip, float del
     calculateBoneTransformsAtTime(clip->root, glm::mat4(1.0f), *clip, state.currentTime, state.finalMatrices, boneInfoMap, globalInverseTransform, true);
 }
 
-const AnimationClip* findClip(const std::unordered_map<std::string, AnimationClip>& clips, const std::string& name)
+const AnimationClip *findClip(const std::unordered_map<std::string, AnimationClip> &clips, const std::string &name)
 {
     auto it = clips.find(name);
     return it == clips.end() ? nullptr : &it->second;
