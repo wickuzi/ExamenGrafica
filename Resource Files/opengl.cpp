@@ -207,7 +207,7 @@ unsigned int loadTextureFromJpeg(const wchar_t* path)
         return 0;
     }
 
-    bitmap.RotateFlip(Gdiplus::RotateNoneFlipY);
+    //bitmap.RotateFlip(Gdiplus::RotateNoneFlipY);
 
     const UINT width = bitmap.GetWidth();
     const UINT height = bitmap.GetHeight();
@@ -302,8 +302,29 @@ HudTexture createTextTexture(const wchar_t* text, const wchar_t* fontName, float
     return result;
 }
 
+enum GameState
+{
+    MENU,
+    PLAYING,
+    PAUSED
+};
+
+GameState currentState = MENU;
+
 int main()
 {
+
+
+    // Mostrar directorio de trabajo actual
+    char cwd[MAX_PATH];
+    GetCurrentDirectoryA(MAX_PATH, cwd);
+    std::cout << "Current working directory: " << cwd << std::endl;
+    
+    // Listar archivos en el directorio actual
+    std::cout << "Files in current directory:" << std::endl;
+    for (const auto& entry : std::filesystem::directory_iterator(".")) {
+        std::cout << "  - " << entry.path().filename().string() << std::endl;
+    }
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
@@ -411,6 +432,29 @@ int main()
     unsigned int hudQuadVAO = 0;
     unsigned int hudQuadIndexCount = 0;
     createQuad(hudQuadVAO, hudQuadIndexCount);
+
+    //richard's custom HUD textures
+    HudTexture titleText;
+    HudTexture startText;
+    HudTexture exitText;
+    HudTexture menuWallpaper;
+    
+    std::filesystem::path wallpaperPath = resourceDir.parent_path() / "Resource Files" / "shwallpaper.jpeg";
+    if (!std::filesystem::exists(wallpaperPath)) {
+        wallpaperPath = std::filesystem::path("Resource Files") / "shwallpaper.jpeg";
+    }
+    unsigned int wallTexID = loadTextureFromJpeg(wallpaperPath.wstring().c_str());
+
+    // Si la carga fue exitosa, llenamos los datos de la estructura
+    if (wallTexID != 0) {
+        menuWallpaper.texture = wallTexID;
+        menuWallpaper.width = SCR_WIDTH;   // Se estira al ancho de tu pantalla
+        menuWallpaper.height = SCR_HEIGHT; // Se estira al alto de tu pantalla
+        std::cout << "Wallpaper del menu cargado exitosamente con GDI+." << std::endl;
+    } else {
+        std::cout << "Error: No se pudo cargar el wallpaper del menu." << std::endl;
+    }
+
     HudTexture saveTitleText = createTextTexture(L"SAVE GAME", L"Georgia", 42.0f, 400, 72, Gdiplus::Color(245, 245, 238, 228));
     HudTexture saveEmptyText = createTextTexture(L"EMPTY SLOT", L"Georgia", 24.0f, 320, 48, Gdiplus::Color(205, 222, 216, 210));
     HudTexture saveLocationText = createTextTexture(L"SILENT HILL ROAD", L"Georgia", 23.0f, 430, 64, Gdiplus::Color(220, 218, 210, 212));
@@ -418,6 +462,38 @@ int main()
     HudTexture savePromptText = createTextTexture(L"PRESS E TO RETURN", L"Georgia", 19.0f, 300, 40, Gdiplus::Color(230, 218, 210, 190));
     HudTexture saveInteractText = createTextTexture(L"PRESS E", L"Georgia", 20.0f, 112, 34, Gdiplus::Color(245, 230, 220, 218));
     initAudio();
+
+    // create title and menu textures by ropchard
+        titleText =
+    createTextTexture(
+        L"SILENT HILL 2",
+        L"Georgia",
+        72,
+        800,
+        100,
+        Gdiplus::Color(255,255,255,255)
+    );
+
+    startText =
+    createTextTexture(
+        L"PRESS ENTER TO START",
+        L"Georgia",
+        36,
+        500,
+        50,
+        Gdiplus::Color(255,220,220,220)
+    );
+
+    exitText =
+    createTextTexture(
+        L"ESC TO EXIT",
+        L"Georgia",
+        30,
+        300,
+        50,
+        Gdiplus::Color(255,180,180,180)
+    );
+
 
     auto drawHudQuad = [&](unsigned int texture, float x, float y, float width, float height, const glm::vec3& color, float alpha) {
         glm::mat4 model = glm::mat4(1.0f);
@@ -581,7 +657,7 @@ int main()
     std::cout << "==================" << std::endl;
 
 
-    // render loop
+// render loop
     // -----------
     while (!glfwWindowShouldClose(window))
     {
@@ -594,265 +670,394 @@ int main()
         // input
         // -----
         processInput(window);
-        updateFootstepAudio();
-        updateThirdPersonCamera();
 
-        const AnimationClip* desiredClip = findClip(jamesAnimations, "idle");
-        bool desiredLooping = true;
-        bool forwardPressed = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
-        bool backwardPressed = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
-        bool leftPressed = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
-        bool rightPressed = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
-        if (jumpRequested && findClip(jamesAnimations, "jump")) {
-            desiredClip = findClip(jamesAnimations, "jump");
-            desiredLooping = false;
-        } else if ((forwardPressed || backwardPressed) && leftPressed && !rightPressed && findClip(jamesAnimations, "strafe_left")) {
-            desiredClip = findClip(jamesAnimations, "strafe_left");
-        } else if ((forwardPressed || backwardPressed) && rightPressed && !leftPressed && findClip(jamesAnimations, "strafe_right")) {
-            desiredClip = findClip(jamesAnimations, "strafe_right");
-        } else if ((forwardPressed || backwardPressed) && findClip(jamesAnimations, "walking")) {
-            desiredClip = findClip(jamesAnimations, "walking");
-        } else if ((leftPressed || turnAnimationActive) && !rightPressed && findClip(jamesAnimations, "turn_left")) {
-            desiredClip = findClip(jamesAnimations, "turn_left");
-            desiredLooping = false;
-        } else if ((rightPressed || turnAnimationActive) && !leftPressed && findClip(jamesAnimations, "turn_right")) {
-            desiredClip = findClip(jamesAnimations, "turn_right");
-            desiredLooping = false;
-        }
-        updateAnimation(jamesAnimState, desiredClip, deltaTime, jamesBoneInfo, jamesBoneCount, jamesGlobalInverseTransform, desiredLooping);
-        turnAnimationActive = desiredClip && !desiredLooping && desiredClip != findClip(jamesAnimations, "jump") && jamesAnimState.currentTime < desiredClip->duration - 1.0f;
-        for (auto& matrix : jamesAnimState.finalMatrices) {
-            matrix = glm::translate(glm::mat4(1.0f), JAMES_FBX_SKIN_OFFSET) *
-                     glm::scale(glm::mat4(1.0f), glm::vec3(JAMES_FBX_SKIN_SCALE)) *
-                     matrix;
-        }
-        jumpRequested = false;
+    // =================================================================
+    // CASO A: REGLAS PARA EL MENÚ PRINCIPAL
+    // =================================================================
+            if (currentState == MENU)
+            {
+                // Limpiar buffers
+                glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // render
-        // ------
-        glClearColor(FOG_COLOR.r, FOG_COLOR.g, FOG_COLOR.b, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_CULL_FACE);
 
-        // view/projection transformations (needed for skybox)
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.GetViewMatrix();
+                // Forzar el cursor visible en menús
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-        // render skybox first
-        skybox.render(skyboxShader.ID, view, projection);
+                // Configurar proyección Ortogonal para HUD/Texturas 2D
+                glm::mat4 orthoProjection = glm::ortho(0.0f, (float)SCR_WIDTH, (float)SCR_HEIGHT, 0.0f, -1.0f, 1.0f);
+                glm::mat4 viewIdentity = glm::mat4(1.0f);
 
-        // be sure to activate shader when setting uniforms/drawing objects
-        lightingShader.use();
-        lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
-        lightingShader.setVec3("viewPos", camera.Position);
-        lightingShader.setInt("useSkinning", 0);
-
-        // directional light
-        lightingShader.setVec3("dirLight_direction", -0.2f, -1.0f, -0.3f);
-        lightingShader.setVec3("dirLight_color", 0.88f, 0.88f, 0.78f);
-
-        // fixed red glow for the manual-save point.
-        int numPoints = 1;
-        lightingShader.setInt("numPointLights", numPoints);
-        {
-            glm::vec3 saveWorld = savePointPosition + savePointNormal * 0.35f;
-            glm::vec3 saveGlow = glm::vec3(1.0f, 0.08f, 0.04f) * 0.75f;
-            std::string base = "pointLights[0].";
-            lightingShader.setVec3(base + "position", saveWorld);
-            lightingShader.setVec3(base + "color", saveGlow);
-            lightingShader.setFloat(base + "constant", 1.0f);
-            lightingShader.setFloat(base + "linear", 0.08f);
-            lightingShader.setFloat(base + "quadratic", 0.035f);
-        }
-
-        lightingShader.setMat4("projection", projection);
-        lightingShader.setMat4("view", view);
-
-        // Render map/scene
-        if (!mapMeshes.empty()) {
-            glEnable(GL_CULL_FACE);
-            glCullFace(GL_BACK);
-            glFrontFace(GL_CCW);
-            lightingShader.setMat4("model", mapModelTransform);
-            lightingShader.setFloat("alphaCutoff", 0.70f);
-            for (auto &m : mapMeshes) {
-                if (!m.hasTexture) continue;
-                lightingShader.setVec3("objectColor", m.materialColor);
-                lightingShader.setFloat("objectAlpha", m.materialAlpha);
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, m.texture);
-                glBindVertexArray(m.VAO);
-                glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
-            }
-            glDisable(GL_CULL_FACE);
-            lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
-            lightingShader.setFloat("objectAlpha", 1.0f);
-            lightingShader.setFloat("alphaCutoff", 0.38f);
-            lightingShader.setInt("useSkinning", 0);
-        }
-
-        // Render James model
-        if (!jamesMeshes.empty()) {
-            glm::mat4 jamesModel = glm::mat4(1.0f);
-            glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
-            float jamesMinY = jamesAABBMin.y;
-            jamesModel = glm::translate(jamesModel, playerPosition);
-            jamesModel = glm::rotate(jamesModel, glm::radians(MODEL_ROT_X), glm::vec3(1.0f, 0.0f, 0.0f));
-            jamesModel = glm::rotate(jamesModel, glm::radians(MODEL_ROT_Y + playerYaw), glm::vec3(0.0f, 1.0f, 0.0f));
-            jamesModel = glm::rotate(jamesModel, glm::radians(MODEL_ROT_Z), glm::vec3(0.0f, 0.0f, 1.0f));
-            jamesModel = glm::scale(jamesModel, glm::vec3(jamesRenderScale));
-            jamesModel = glm::translate(jamesModel, glm::vec3(-jamesCenter.x, -jamesMinY, -jamesCenter.z));
-            lightingShader.setMat4("model", jamesModel);
-            lightingShader.setInt("useSkinning", jamesBoneCount > 0 && jamesAnimState.current ? 1 : 0);
-            for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i) {
-                lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", jamesAnimState.finalMatrices[i]);
-            }
-            for (auto &m : jamesMeshes) {
-                lightingShader.setVec3("objectColor", m.materialColor);
-                lightingShader.setFloat("objectAlpha", m.materialAlpha);
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, m.texture);
-                glBindVertexArray(m.VAO);
-                glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
-            }
-            lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
-            lightingShader.setFloat("objectAlpha", 1.0f);
-            lightingShader.setInt("useSkinning", 0);
-        }
-
-        // render the Silent Hill-style manual-save paper.
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, getWhiteTexture());
-        glBindVertexArray(savePaperVAO);
-
-        glm::mat4 savePaperModel = glm::mat4(1.0f);
-        savePaperModel = makeWallModel(savePointPosition, savePointNormal, glm::vec3(0.56f, 0.34f, 1.0f));
-        lightingShader.setMat4("model", savePaperModel);
-        lightingShader.setVec3("objectColor", 1.0f, 0.04f, 0.025f);
-        lightingShader.setFloat("emissiveStrength", 0.45f);
-        glDrawElements(GL_TRIANGLES, (GLsizei)savePaperIndexCount, GL_UNSIGNED_INT, 0);
-
-        glm::mat4 saveRimModel = glm::mat4(1.0f);
-        saveRimModel = makeWallModel(savePointPosition + glm::vec3(0.0f, 0.07f, 0.0f) + savePointNormal * 0.003f,
-                                     savePointNormal,
-                                     glm::vec3(0.115f, 0.115f, 1.0f));
-        lightingShader.setMat4("model", saveRimModel);
-        lightingShader.setVec3("objectColor", 0.015f, 0.012f, 0.012f);
-        lightingShader.setFloat("emissiveStrength", 0.0f);
-        glBindVertexArray(saveDiskVAO);
-        glDrawElements(GL_TRIANGLES, (GLsizei)saveDiskIndexCount, GL_UNSIGNED_INT, 0);
-
-        glm::mat4 saveButtonModel = glm::mat4(1.0f);
-        saveButtonModel = makeWallModel(savePointPosition + glm::vec3(0.0f, 0.07f, 0.0f) + savePointNormal * 0.006f,
-                                        savePointNormal,
-                                        glm::vec3(0.078f, 0.078f, 1.0f));
-        lightingShader.setMat4("model", saveButtonModel);
-        lightingShader.setVec3("objectColor", 1.0f, 0.96f, 0.86f);
-        lightingShader.setFloat("emissiveStrength", 0.65f);
-        glDrawElements(GL_TRIANGLES, (GLsizei)saveDiskIndexCount, GL_UNSIGNED_INT, 0);
-        lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
-        lightingShader.setFloat("emissiveStrength", 0.0f);
-
-        float saveDistance = glm::length(glm::vec2(playerPosition.x - savePointPosition.x, playerPosition.z - savePointPosition.z));
-        bool savePointInRange = saveDistance <= SAVE_POINT_INTERACT_RADIUS;
-        if (saveMenuOpen || savePointInRange) {
-            glDisable(GL_DEPTH_TEST);
-            glDisable(GL_CULL_FACE);
-            lightingShader.use();
-            lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
-            lightingShader.setMat4("view", glm::mat4(1.0f));
-            lightingShader.setVec3("viewPos", 0.0f, 0.0f, 1.0f);
-            lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
-            lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
-            lightingShader.setInt("numPointLights", 0);
-            lightingShader.setInt("fogEnabled", 0);
-            lightingShader.setInt("useSkinning", 0);
-            lightingShader.setFloat("material_ambientStrength", 1.0f);
-            lightingShader.setFloat("material_specularStrength", 0.0f);
-            lightingShader.setFloat("emissiveStrength", 0.0f);
-            lightingShader.setFloat("alphaCutoff", 0.01f);
-
-            if (saveMenuOpen) {
-                drawHudQuad(getWhiteTexture(), 0.0f, 0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), glm::vec3(0.11f, 0.0f, 0.0f), 0.92f);
-                drawHudQuad(getWhiteTexture(), 74.0f, 78.0f, 690.0f, 8.0f, glm::vec3(0.95f, 0.05f, 0.04f), 0.50f);
-                drawHudQuad(getWhiteTexture(), 100.0f, 96.0f, 610.0f, 90.0f, glm::vec3(0.72f, 0.03f, 0.03f), 0.38f);
-                drawHudQuad(getWhiteTexture(), 52.0f, 210.0f, 900.0f, 92.0f, glm::vec3(0.20f, 0.0f, 0.0f), 0.55f);
-                drawHudQuad(getWhiteTexture(), 54.0f, 208.0f, 896.0f, 2.0f, glm::vec3(0.95f, 0.09f, 0.08f), 0.36f);
-                drawHudQuad(getWhiteTexture(), 62.0f, 219.0f, 78.0f, 48.0f, glm::vec3(0.28f, 0.07f, 0.06f), 0.95f);
-                drawHudQuad(getWhiteTexture(), 86.0f, 238.0f, 30.0f, 10.0f, glm::vec3(1.0f, 0.02f, 0.01f), 0.80f);
-                drawHudQuad(getWhiteTexture(), 690.0f, 0.0f, 420.0f, static_cast<float>(SCR_HEIGHT), glm::vec3(0.34f, 0.0f, 0.0f), 0.12f);
-
-                if (!jamesMeshes.empty()) {
-                    glEnable(GL_DEPTH_TEST);
-                    glClear(GL_DEPTH_BUFFER_BIT);
-                    glViewport(SCR_WIDTH / 2, 0, SCR_WIDTH / 2, SCR_HEIGHT);
-                    glm::mat4 portraitProjection = glm::perspective(glm::radians(22.0f), (float)(SCR_WIDTH / 2) / (float)SCR_HEIGHT, 0.1f, 20.0f);
-                    glm::mat4 portraitView = glm::lookAt(glm::vec3(0.0f, 2.35f, 3.35f),
-                                                         glm::vec3(0.0f, 2.35f, 0.0f),
-                                                         glm::vec3(0.0f, 1.0f, 0.0f));
-                    glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
-                    float jamesMinY = jamesAABBMin.y;
-                    glm::mat4 portraitModel = glm::mat4(1.0f);
-                    portraitModel = glm::translate(portraitModel, glm::vec3(0.18f, 0.0f, 0.0f));
-                    portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_X), glm::vec3(1.0f, 0.0f, 0.0f));
-                    portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_Y), glm::vec3(0.0f, 1.0f, 0.0f));
-                    portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_Z), glm::vec3(0.0f, 0.0f, 1.0f));
-                    portraitModel = glm::scale(portraitModel, glm::vec3(jamesRenderScale * 1.45f));
-                    portraitModel = glm::translate(portraitModel, glm::vec3(-jamesCenter.x, -jamesMinY, -jamesCenter.z));
-
-                    lightingShader.setMat4("projection", portraitProjection);
-                    lightingShader.setMat4("view", portraitView);
-                    lightingShader.setMat4("model", portraitModel);
-                    lightingShader.setVec3("viewPos", 0.0f, 3.15f, 4.0f);
-                    lightingShader.setVec3("dirLight_direction", -0.25f, -0.25f, -1.0f);
-                    lightingShader.setVec3("dirLight_color", 1.0f, 0.10f, 0.08f);
-                    lightingShader.setFloat("material_ambientStrength", 0.92f);
-                    lightingShader.setFloat("material_specularStrength", 0.04f);
-                    lightingShader.setFloat("objectAlpha", 0.55f);
-                    lightingShader.setFloat("emissiveStrength", 0.04f);
-                    lightingShader.setInt("useSkinning", jamesBoneCount > 0 && jamesAnimState.current ? 1 : 0);
-                    for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i) {
-                        lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", jamesAnimState.finalMatrices[i]);
+                lightingShader.use();
+                lightingShader.setMat4("projection", orthoProjection);
+                lightingShader.setMat4("view", viewIdentity);
+                lightingShader.setInt("fogEnabled", 0);
+                lightingShader.setInt("useSkinning", 0);
+                lightingShader.setFloat("objectAlpha", 1.0f);
+                lightingShader.setFloat("emissiveStrength", 0.0f);
+                lightingShader.setInt("numPointLights", 0);  // Importante: desactivar luces puntuales
+                
+                // Configurar luz direccional por defecto
+                lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
+                lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
+                lightingShader.setFloat("material_ambientStrength", 1.0f);
+                lightingShader.setFloat("material_specularStrength", 0.0f);
+                
+                // Verificar que el wallpaper se cargó correctamente
+                if (menuWallpaper.texture == 0) {
+                    std::cout << "ERROR: menuWallpaper texture is 0, trying to reload..." << std::endl;
+                    std::filesystem::path wallpaperPath = resourceDir.parent_path() / "Resource Files" / "shwallpaper.jpeg";
+                    if (!std::filesystem::exists(wallpaperPath)) {
+                        wallpaperPath = std::filesystem::path("Resource Files") / "shwallpaper.jpeg";
                     }
-                    for (auto &m : jamesMeshes) {
-                        lightingShader.setVec3("objectColor", glm::vec3(1.0f, 0.18f, 0.12f) * m.materialColor);
-                        glActiveTexture(GL_TEXTURE0);
-                        glBindTexture(GL_TEXTURE_2D, m.texture);
-                        glBindVertexArray(m.VAO);
-                        glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                    unsigned int wallTexID = loadTextureFromJpeg(wallpaperPath.wstring().c_str());
+                    if (wallTexID != 0) {
+                        menuWallpaper.texture = wallTexID;
+                        menuWallpaper.width = SCR_WIDTH;
+                        menuWallpaper.height = SCR_HEIGHT;
+                        std::cout << "Wallpaper recargado exitosamente." << std::endl;
+                    } else {
+                        std::cout << "ERROR: No se pudo cargar el wallpaper." << std::endl;
                     }
-                    glDisable(GL_DEPTH_TEST);
-                    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
-                    lightingShader.setInt("useSkinning", 0);
-                    lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
-                    lightingShader.setMat4("view", glm::mat4(1.0f));
-                    lightingShader.setVec3("viewPos", 0.0f, 0.0f, 1.0f);
-                    lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
-                    lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
-                    lightingShader.setFloat("material_ambientStrength", 1.0f);
-                    lightingShader.setFloat("material_specularStrength", 0.0f);
-                    lightingShader.setFloat("objectAlpha", 1.0f);
-                    lightingShader.setFloat("emissiveStrength", 0.0f);
+                }
+                
+                // Dibujar wallpaper (fondo)
+                if (menuWallpaper.texture != 0) {
+                    drawHudQuad(menuWallpaper.texture, 0.0f, 0.0f,
+                                (float)SCR_WIDTH, (float)SCR_HEIGHT,
+                                glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
+                } else {
+                    // Fallback: color sólido oscuro
+                    drawHudQuad(getWhiteTexture(), 0.0f, 0.0f,
+                                (float)SCR_WIDTH, (float)SCR_HEIGHT,
+                                glm::vec3(0.1f, 0.05f, 0.05f), 1.0f);
                 }
 
-                drawHudQuad(saveTitleText.texture, 64.0f, 28.0f, static_cast<float>(saveTitleText.width), static_cast<float>(saveTitleText.height), glm::vec3(1.0f), 1.0f);
-                drawHudQuad(saveEmptyText.texture, 190.0f, 98.0f, static_cast<float>(saveEmptyText.width), static_cast<float>(saveEmptyText.height), glm::vec3(1.0f), 1.0f);
-                drawHudQuad(saveLocationText.texture, 156.0f, 220.0f, static_cast<float>(saveLocationText.width), static_cast<float>(saveLocationText.height), glm::vec3(1.0f), 1.0f);
-                drawHudQuad(saveTimeText.texture, 500.0f, 220.0f, static_cast<float>(saveTimeText.width), static_cast<float>(saveTimeText.height), glm::vec3(1.0f), 1.0f);
-                drawHudQuad(savePromptText.texture, 948.0f, 660.0f, static_cast<float>(savePromptText.width), static_cast<float>(savePromptText.height), glm::vec3(1.0f), 1.0f);
-            } else {
-                drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 32.0f, glm::vec3(0.12f, 0.0f, 0.0f), 0.48f);
-                drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 1.0f, glm::vec3(0.62f, 0.08f, 0.06f), 0.42f);
-                drawHudQuad(saveInteractText.texture, 645.0f, 630.0f, static_cast<float>(saveInteractText.width), static_cast<float>(saveInteractText.height), glm::vec3(1.0f), 1.0f);
+                // Configurar para textos (blending adecuado)
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                
+                // Dibujar elementos centrados en pantalla
+                if (titleText.texture != 0) {
+                    float titleX = (SCR_WIDTH - titleText.width) / 2.0f;
+                    float titleY = 150.0f; 
+                    drawHudQuad(titleText.texture, titleX, titleY, 
+                            (float)titleText.width, (float)titleText.height, 
+                            glm::vec3(1.2f, 1.2f, 1.2f), 1.0f);
+                }
+
+                if (startText.texture != 0) {
+                    float startX = (SCR_WIDTH - startText.width) / 2.0f;
+                    float startY = 400.0f;
+                    drawHudQuad(startText.texture, startX, startY, 
+                            (float)startText.width, (float)startText.height, 
+                            glm::vec3(1.2f, 1.2f, 1.2f), 1.0f);
+                }
+
+                if (exitText.texture != 0) {
+                    float exitX = (SCR_WIDTH - exitText.width) / 2.0f;
+                    float exitY = 500.0f;
+                    drawHudQuad(exitText.texture, exitX, exitY, 
+                            (float)exitText.width, (float)exitText.height, 
+                            glm::vec3(1.2f, 1.2f, 1.2f), 1.0f);
+                }
+        }
+        // =================================================================
+        // CASO B: REGLAS PARA EL JUEGO ACTIVO (PLAYING)
+        // =================================================================
+        else if (currentState == PLAYING)
+        {
+            // Ocultar y capturar el cursor para control de cámara libre
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+            // Actualizaciones lógicas del mundo
+            updateFootstepAudio();
+            updateThirdPersonCamera();
+
+            // 1. Manejo del árbol de Animación de James
+            const AnimationClip* desiredClip = findClip(jamesAnimations, "idle");
+            bool desiredLooping = true;
+            bool forwardPressed = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+            bool backwardPressed = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+            bool leftPressed = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
+            bool rightPressed = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+
+            if (jumpRequested && findClip(jamesAnimations, "jump")) {
+                desiredClip = findClip(jamesAnimations, "jump");
+                desiredLooping = false;
+            } else if ((forwardPressed || backwardPressed) && leftPressed && !rightPressed && findClip(jamesAnimations, "strafe_left")) {
+                desiredClip = findClip(jamesAnimations, "strafe_left");
+            } else if ((forwardPressed || backwardPressed) && rightPressed && !leftPressed && findClip(jamesAnimations, "strafe_right")) {
+                desiredClip = findClip(jamesAnimations, "strafe_right");
+            } else if ((forwardPressed || backwardPressed) && findClip(jamesAnimations, "walking")) {
+                desiredClip = findClip(jamesAnimations, "walking");
+            } else if ((leftPressed || turnAnimationActive) && !rightPressed && findClip(jamesAnimations, "turn_left")) {
+                desiredClip = findClip(jamesAnimations, "turn_left");
+                desiredLooping = false;
+            } else if ((rightPressed || turnAnimationActive) && !leftPressed && findClip(jamesAnimations, "turn_right")) {
+                desiredClip = findClip(jamesAnimations, "turn_right");
+                desiredLooping = false;
             }
 
-            lightingShader.setFloat("objectAlpha", 1.0f);
-            lightingShader.setFloat("alphaCutoff", 0.38f);
-            lightingShader.setFloat("material_ambientStrength", 0.48f);
-            lightingShader.setFloat("material_specularStrength", 0.12f);
-            lightingShader.setInt("fogEnabled", 1);
-            glEnable(GL_DEPTH_TEST);
-        }
+            updateAnimation(jamesAnimState, desiredClip, deltaTime, jamesBoneInfo, jamesBoneCount, jamesGlobalInverseTransform, desiredLooping);
+            turnAnimationActive = desiredClip && !desiredLooping && desiredClip != findClip(jamesAnimations, "jump") && jamesAnimState.currentTime < desiredClip->duration - 1.0f;
+            
+            for (auto& matrix : jamesAnimState.finalMatrices) {
+                matrix = glm::translate(glm::mat4(1.0f), JAMES_FBX_SKIN_OFFSET) *
+                         glm::scale(glm::mat4(1.0f), glm::vec3(JAMES_FBX_SKIN_SCALE)) *
+                         matrix;
+            }
+            jumpRequested = false;
 
+            // Limpiar buffers para el frame 3D con el color de la niebla
+            glClearColor(FOG_COLOR.r, FOG_COLOR.g, FOG_COLOR.b, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // Transformaciones espaciales básicas 3D
+            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+            glm::mat4 view = camera.GetViewMatrix();
+
+            glEnable(GL_DEPTH_TEST);
+
+            // Renderizar Skybox
+            skybox.render(skyboxShader.ID, view, projection);
+
+            // Configuración del Shader de Iluminación para elementos 3D estáticos
+            lightingShader.use();
+            lightingShader.setMat4("projection", projection);
+            lightingShader.setMat4("view", view);
+            lightingShader.setInt("fogEnabled", 1);
+            lightingShader.setFloat("objectAlpha", 1.0f);
+            lightingShader.setFloat("emissiveStrength", 0.0f);
+            lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+            lightingShader.setVec3("viewPos", camera.Position);
+            lightingShader.setInt("useSkinning", 0);
+
+            // Luz Direccional global del entorno
+            lightingShader.setVec3("dirLight_direction", -0.2f, -1.0f, -0.3f);
+            lightingShader.setVec3("dirLight_color", 0.88f, 0.88f, 0.78f);
+
+            // Configuración de la luz puntal roja del punto de guardado
+            int numPoints = 1;
+            lightingShader.setInt("numPointLights", numPoints);
+            {
+                glm::vec3 saveWorld = savePointPosition + savePointNormal * 0.35f;
+                glm::vec3 saveGlow = glm::vec3(1.0f, 0.08f, 0.04f) * 0.75f;
+                std::string base = "pointLights[0].";
+                lightingShader.setVec3(base + "position", saveWorld);
+                lightingShader.setVec3(base + "color", saveGlow);
+                lightingShader.setFloat(base + "constant", 1.0f);
+                lightingShader.setFloat(base + "linear", 0.08f);
+                lightingShader.setFloat(base + "quadratic", 0.035f);
+            }
+
+            // 2. Dibujar el mapa / escenario
+            if (!mapMeshes.empty()) {
+                glEnable(GL_CULL_FACE);
+                glCullFace(GL_BACK);
+                glFrontFace(GL_CCW);
+                lightingShader.setMat4("model", mapModelTransform);
+                lightingShader.setFloat("alphaCutoff", 0.70f);
+                for (auto &m : mapMeshes) {
+                    if (!m.hasTexture) continue;
+                    lightingShader.setVec3("objectColor", m.materialColor);
+                    lightingShader.setFloat("objectAlpha", m.materialAlpha);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, m.texture);
+                    glBindVertexArray(m.VAO);
+                    glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                }
+                glDisable(GL_CULL_FACE);
+                lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+                lightingShader.setFloat("objectAlpha", 1.0f);
+                lightingShader.setFloat("alphaCutoff", 0.38f);
+                lightingShader.setInt("useSkinning", 0);
+            }
+
+            // 3. Dibujar el modelo animado de James (Skinning habilitado)
+            if (!jamesMeshes.empty()) {
+                glm::mat4 jamesModel = glm::mat4(1.0f);
+                glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
+                float jamesMinY = jamesAABBMin.y;
+                jamesModel = glm::translate(jamesModel, playerPosition);
+                jamesModel = glm::rotate(jamesModel, glm::radians(MODEL_ROT_X), glm::vec3(1.0f, 0.0f, 0.0f));
+                jamesModel = glm::rotate(jamesModel, glm::radians(MODEL_ROT_Y + playerYaw), glm::vec3(0.0f, 1.0f, 0.0f));
+                jamesModel = glm::rotate(jamesModel, glm::radians(MODEL_ROT_Z), glm::vec3(0.0f, 0.0f, 1.0f));
+                jamesModel = glm::scale(jamesModel, glm::vec3(jamesRenderScale));
+                jamesModel = glm::translate(jamesModel, glm::vec3(-jamesCenter.x, -jamesMinY, -jamesCenter.z));
+                
+                lightingShader.setMat4("model", jamesModel);
+                lightingShader.setInt("useSkinning", jamesBoneCount > 0 && jamesAnimState.current ? 1 : 0);
+                
+                for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i) {
+                    lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", jamesAnimState.finalMatrices[i]);
+                }
+                for (auto &m : jamesMeshes) {
+                    lightingShader.setVec3("objectColor", m.materialColor);
+                    lightingShader.setFloat("objectAlpha", m.materialAlpha);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, m.texture);
+                    glBindVertexArray(m.VAO);
+                    glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                }
+                lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+                lightingShader.setFloat("objectAlpha", 1.0f);
+                lightingShader.setInt("useSkinning", 0);
+            }
+
+            // 4. Dibujar geometrías físicas del punto de guardado (Hojas de papel y discos)
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, getWhiteTexture());
+            glBindVertexArray(savePaperVAO);
+
+            glm::mat4 savePaperModel = glm::mat4(1.0f);
+            savePaperModel = makeWallModel(savePointPosition, savePointNormal, glm::vec3(0.56f, 0.34f, 1.0f));
+            lightingShader.setMat4("model", savePaperModel);
+            lightingShader.setVec3("objectColor", 1.0f, 0.04f, 0.025f);
+            lightingShader.setFloat("emissiveStrength", 0.45f);
+            glDrawElements(GL_TRIANGLES, (GLsizei)savePaperIndexCount, GL_UNSIGNED_INT, 0);
+
+            glm::mat4 saveRimModel = glm::mat4(1.0f);
+            saveRimModel = makeWallModel(savePointPosition + glm::vec3(0.0f, 0.07f, 0.0f) + savePointNormal * 0.003f, savePointNormal, glm::vec3(0.115f, 0.115f, 1.0f));
+            lightingShader.setMat4("model", saveRimModel);
+            lightingShader.setVec3("objectColor", 0.015f, 0.012f, 0.012f);
+            lightingShader.setFloat("emissiveStrength", 0.0f);
+            glBindVertexArray(saveDiskVAO);
+            glDrawElements(GL_TRIANGLES, (GLsizei)saveDiskIndexCount, GL_UNSIGNED_INT, 0);
+
+            glm::mat4 saveButtonModel = glm::mat4(1.0f);
+            saveButtonModel = makeWallModel(savePointPosition + glm::vec3(0.0f, 0.07f, 0.0f) + savePointNormal * 0.006f, savePointNormal, glm::vec3(0.078f, 0.078f, 1.0f));
+            lightingShader.setMat4("model", saveButtonModel);
+            lightingShader.setVec3("objectColor", 1.0f, 0.96f, 0.86f);
+            lightingShader.setFloat("emissiveStrength", 0.65f);
+            glDrawElements(GL_TRIANGLES, (GLsizei)saveDiskIndexCount, GL_UNSIGNED_INT, 0);
+            
+            lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+            lightingShader.setFloat("emissiveStrength", 0.0f);
+
+            // 5. Gestión del Menú de Guardado superpuesto (UI / HUD)
+            float saveDistance = glm::length(glm::vec2(playerPosition.x - savePointPosition.x, playerPosition.z - savePointPosition.z));
+            bool savePointInRange = saveDistance <= SAVE_POINT_INTERACT_RADIUS;
+
+            if (saveMenuOpen || savePointInRange) 
+            {
+                // Configuración común para pintar elementos 2D superpuestos
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_CULL_FACE);
+                
+                lightingShader.use();
+                lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
+                lightingShader.setMat4("view", glm::mat4(1.0f));
+                lightingShader.setVec3("viewPos", 0.0f, 0.0f, 1.0f);
+                lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
+                lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
+                lightingShader.setInt("numPointLights", 0);
+                lightingShader.setInt("fogEnabled", 0);
+                lightingShader.setInt("useSkinning", 0);
+                lightingShader.setFloat("material_ambientStrength", 1.0f);
+                lightingShader.setFloat("material_specularStrength", 0.0f);
+                lightingShader.setFloat("emissiveStrength", 0.0f);
+                lightingShader.setFloat("alphaCutoff", 0.01f);
+
+                if (saveMenuOpen) 
+                {
+                    // Forzar cursor libre para seleccionar ranuras si fuera necesario
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+                    // Capas de fondo rojo translúcido y contenedores estilizados
+                    drawHudQuad(getWhiteTexture(), 0.0f, 0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), glm::vec3(0.11f, 0.0f, 0.0f), 0.92f);
+                    drawHudQuad(getWhiteTexture(), 74.0f, 78.0f, 690.0f, 8.0f, glm::vec3(0.95f, 0.05f, 0.04f), 0.50f);
+                    drawHudQuad(getWhiteTexture(), 100.0f, 96.0f, 610.0f, 90.0f, glm::vec3(0.72f, 0.03f, 0.03f), 0.38f);
+                    drawHudQuad(getWhiteTexture(), 52.0f, 210.0f, 900.0f, 92.0f, glm::vec3(0.20f, 0.0f, 0.0f), 0.55f);
+                    drawHudQuad(getWhiteTexture(), 54.0f, 208.0f, 896.0f, 2.0f, glm::vec3(0.95f, 0.09f, 0.08f), 0.36f);
+                    drawHudQuad(getWhiteTexture(), 62.0f, 219.0f, 78.0f, 48.0f, glm::vec3(0.28f, 0.07f, 0.06f), 0.95f);
+                    drawHudQuad(getWhiteTexture(), 86.0f, 238.0f, 30.0f, 10.0f, glm::vec3(1.0f, 0.02f, 0.01f), 0.80f);
+                    drawHudQuad(getWhiteTexture(), 690.0f, 0.0f, 420.0f, static_cast<float>(SCR_HEIGHT), glm::vec3(0.34f, 0.0f, 0.0f), 0.12f);
+
+                    // Renderizado del retrato 3D estilizado de James en el menú de guardado
+                    if (!jamesMeshes.empty()) {
+                        glEnable(GL_DEPTH_TEST);
+                        glClear(GL_DEPTH_BUFFER_BIT);
+                        glViewport(SCR_WIDTH / 2, 0, SCR_WIDTH / 2, SCR_HEIGHT);
+                        
+                        glm::mat4 portraitProjection = glm::perspective(glm::radians(22.0f), (float)(SCR_WIDTH / 2) / (float)SCR_HEIGHT, 0.1f, 20.0f);
+                        glm::mat4 portraitView = glm::lookAt(glm::vec3(0.0f, 2.35f, 3.35f), glm::vec3(0.0f, 2.35f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                        
+                        glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
+                        float jamesMinY = jamesAABBMin.y;
+                        glm::mat4 portraitModel = glm::mat4(1.0f);
+                        portraitModel = glm::translate(portraitModel, glm::vec3(0.18f, 0.0f, 0.0f));
+                        portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_X), glm::vec3(1.0f, 0.0f, 0.0f));
+                        portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_Y), glm::vec3(0.0f, 1.0f, 0.0f));
+                        portraitModel = glm::rotate(portraitModel, glm::radians(MODEL_ROT_Z), glm::vec3(0.0f, 0.0f, 1.0f));
+                        portraitModel = glm::scale(portraitModel, glm::vec3(jamesRenderScale * 1.45f));
+                        portraitModel = glm::translate(portraitModel, glm::vec3(-jamesCenter.x, -jamesMinY, -jamesCenter.z));
+
+                        lightingShader.setMat4("projection", portraitProjection);
+                        lightingShader.setMat4("view", portraitView);
+                        lightingShader.setMat4("model", portraitModel);
+                        lightingShader.setVec3("viewPos", 0.0f, 3.15f, 4.0f);
+                        lightingShader.setVec3("dirLight_direction", -0.25f, -0.25f, -1.0f);
+                        lightingShader.setVec3("dirLight_color", 1.0f, 0.10f, 0.08f);
+                        lightingShader.setFloat("material_ambientStrength", 0.92f);
+                        lightingShader.setFloat("material_specularStrength", 0.04f);
+                        lightingShader.setFloat("objectAlpha", 0.55f);
+                        lightingShader.setFloat("emissiveStrength", 0.04f);
+                        lightingShader.setInt("useSkinning", jamesBoneCount > 0 && jamesAnimState.current ? 1 : 0);
+                        
+                        for (int i = 0; i < glm::min(jamesBoneCount, MAX_BONES); ++i) {
+                            lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", jamesAnimState.finalMatrices[i]);
+                        }
+                        for (auto &m : jamesMeshes) {
+                            lightingShader.setVec3("objectColor", glm::vec3(1.0f, 0.18f, 0.12f) * m.materialColor);
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, m.texture);
+                            glBindVertexArray(m.VAO);
+                            glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                        }
+                        
+                        glDisable(GL_DEPTH_TEST);
+                        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT); // Restaurar Viewport completo
+                        
+                        // Re-vincular configuraciones Ortogonales para los textos del menú
+                        lightingShader.setInt("useSkinning", 0);
+                        lightingShader.setMat4("projection", glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f));
+                        lightingShader.setMat4("view", glm::mat4(1.0f));
+                        lightingShader.setVec3("viewPos", 0.0f, 0.0f, 1.0f);
+                        lightingShader.setVec3("dirLight_direction", 0.0f, 0.0f, -1.0f);
+                        lightingShader.setVec3("dirLight_color", 1.0f, 1.0f, 1.0f);
+                        lightingShader.setFloat("material_ambientStrength", 1.0f);
+                        lightingShader.setFloat("material_specularStrength", 0.0f);
+                        lightingShader.setFloat("objectAlpha", 1.0f);
+                        lightingShader.setFloat("emissiveStrength", 0.0f);
+                    }
+
+                    // Renderizar las texturas de textos informativos en el menú de guardado
+                    drawHudQuad(saveTitleText.texture, 64.0f, 28.0f, static_cast<float>(saveTitleText.width), static_cast<float>(saveTitleText.height), glm::vec3(1.0f), 1.0f);
+                    drawHudQuad(saveEmptyText.texture, 190.0f, 98.0f, static_cast<float>(saveEmptyText.width), static_cast<float>(saveEmptyText.height), glm::vec3(1.0f), 1.0f);
+                    drawHudQuad(saveLocationText.texture, 156.0f, 220.0f, static_cast<float>(saveLocationText.width), static_cast<float>(saveLocationText.height), glm::vec3(1.0f), 1.0f);
+                    drawHudQuad(saveTimeText.texture, 500.0f, 220.0f, static_cast<float>(saveTimeText.width), static_cast<float>(saveTimeText.height), glm::vec3(1.0f), 1.0f);
+                    drawHudQuad(savePromptText.texture, 948.0f, 660.0f, static_cast<float>(savePromptText.width), static_cast<float>(savePromptText.height), glm::vec3(1.0f), 1.0f);
+                } 
+                else if (savePointInRange) 
+                {
+                    // Si solo está cerca, muestra el indicador inferior derecho para interactuar (Letra E)
+                    drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 32.0f, glm::vec3(0.12f, 0.0f, 0.0f), 0.48f);
+                    drawHudQuad(getWhiteTexture(), 628.0f, 628.0f, 120.0f, 1.0f, glm::vec3(0.62f, 0.08f, 0.06f), 0.42f);
+                    drawHudQuad(saveInteractText.texture, 645.0f, 630.0f, static_cast<float>(saveInteractText.width), static_cast<float>(saveInteractText.height), glm::vec3(1.0f), 1.0f);
+                }
+                
+                // Limpieza de estados HUD volviendo a configuraciones de juego estándar
+                lightingShader.setFloat("objectAlpha", 1.0f);
+                lightingShader.setFloat("alphaCutoff", 0.38f);
+                lightingShader.setFloat("material_ambientStrength", 0.48f);
+                lightingShader.setFloat("material_specularStrength", 0.12f);
+                lightingShader.setInt("fogEnabled", 1);
+                glEnable(GL_DEPTH_TEST);
+            }
+        }
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -887,6 +1092,19 @@ int main()
 // ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow *window)
 {
+    // Global inputs that work in all states
+    if(currentState == MENU)
+    {
+        if(glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
+            currentState = PLAYING;
+
+        if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+            glfwSetWindowShouldClose(window,true);
+
+        return;
+    }
+
+
     playerIsMoving = false;
     bool ePressed = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
     bool escapePressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
