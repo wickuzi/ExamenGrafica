@@ -1,0 +1,24 @@
+# Generated build outputs
+build/
+dist/
+out/
+build-vs/
+cmake-3.28.1-windows-x86_64/
+
+# IDE caches
+.vs/
+
+# Native build artifacts
+*.o
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Keep runtime DLLs that are intentionally vendored at the project root.
+!glew32.dll
+!glfw3.dll

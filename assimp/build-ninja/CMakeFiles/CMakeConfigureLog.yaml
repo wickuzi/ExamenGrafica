@@ -1,0 +1,11 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Users/david/Desktop/aliasing/cmake-3.28.1-windows-x86_64/share/cmake-3.28/Modules/CMakeDetermineSystem.cmake:233 (message)"
+      - "CMakeLists.txt:113 (PROJECT)"
+    message: |
+      The system is: Windows - 10.0.19045 - AMD64
+...

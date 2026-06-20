@@ -1,0 +1,36 @@
+{
+	"backtrace" : 0,
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : 
+		[
+			"contrib/zlib/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			}
+		]
+	},
+	"dependencies" : 
+	[
+		{
+			"id" : "ZERO_CHECK::@6890427a1f51a3e7e1df"
+		},
+		{
+			"id" : "zlibstatic::@de27f3809863e2bb7c79"
+		}
+	],
+	"id" : "ALL_BUILD::@de27f3809863e2bb7c79",
+	"isGeneratorProvided" : true,
+	"name" : "ALL_BUILD",
+	"paths" : 
+	{
+		"build" : "contrib/zlib",
+		"source" : "contrib/zlib"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}
