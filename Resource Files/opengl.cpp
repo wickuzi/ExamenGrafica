@@ -29,6 +29,7 @@
 #include <gdiplus.h>
 #include <cfloat>
 #include <cctype>
+#include <random>
 
 // Para reproducción de video
 #include <dshow.h>
@@ -74,9 +75,14 @@ void updateThirdPersonCamera();
 void initAudio();
 void startBackgroundMusic();
 void playInteractionSound();
-void updateFootstepAudio();
+void playJamesHurtSound();
+void playShotgunSound();
+void playPyramidHeadHitSound();
+void setPyramidInterferenceActive(bool active);
+void updateFootstepAudio(bool running);
 void shutdownAudio();
 void closeCinematicPlayer();
+void showObjectiveBriefing();
 bool audioCommand(const std::string &command);
 unsigned int loadTextureFromJpeg(const wchar_t *path);
 struct HudTexture;
@@ -97,6 +103,7 @@ struct MeshData
     unsigned int texture = 0;
     bool hasTexture = false;
     bool hasBones = false;
+    std::string materialName;
     glm::vec3 materialColor = glm::vec3(1.0f);
     float materialAlpha = 1.0f;
     bool useTextureAlpha = false;
@@ -302,7 +309,7 @@ std::vector<HorrorLight> horrorLights;
 const float SAVE_POINT_INTERACT_RADIUS = 1.45f;
 const float SHOTGUN_INTERACT_RADIUS = 1.35f;
 // Shared clear/fog color prevents a seam at the distant city horizon.
-const glm::vec3 FOG_COLOR(0.34f, 0.38f, 0.35f);
+const glm::vec3 FOG_COLOR(0.16f, 0.19f, 0.17f);
 // Distance/fog tuning: fog must become opaque before props are culled.
 const float renderDistance = 28.0f;
 const float fogStart = 2.5f;
@@ -574,7 +581,9 @@ enum GameState
 {
     MENU,
     CINEMATIC,
+    OBJECTIVE_BRIEFING,
     PLAYING,
+    GAME_OVER,
     PAUSED
 };
 
@@ -762,8 +771,8 @@ void processMenuSelection(int index)
         }
         else
         {
-            // Si falla, ir directo al juego
-            enterPlayingState();
+            // Even if the video cannot be played, explain the mission first.
+            showObjectiveBriefing();
         }
     }
     else if (selectedId == "exit")
@@ -839,6 +848,15 @@ void updateMenu(GLFWwindow *window, float deltaTime)
 
     mouseLeftWasPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 }
+
+#include "systems/objective_overlay.inl"
+#include "systems/objectives_hud.inl"
+#include "systems/flashlight_system.inl"
+#include "systems/health_system.inl"
+#include "systems/damage_overlay.inl"
+#include "systems/shooting_system.inl"
+#include "systems/enemy_system.inl"
+
 int main()
 {
 
@@ -1051,6 +1069,7 @@ int main()
     HudTexture saveInteractText = createTextTexture(L"PRESS E", L"Georgia", 20.0f, 112, 34, Gdiplus::Color(245, 230, 220, 218));
     HudTexture shotgunInteractText = createTextTexture(L"PRESS E TO GRAB", L"Georgia", 18.0f, 205, 34, Gdiplus::Color(245, 230, 220, 218));
     HudTexture angelaInteractText = createTextTexture(L"PRESS E TO INTERACT", L"Georgia", 18.0f, 245, 34, Gdiplus::Color(245, 230, 220, 218));
+    initObjectiveOverlay();
     HudTexture angelaDialogueText = createTextTexture(
         L"ANGELA: YO TAMBIEN ESTOY PERDIDA, HE VISTO A CRIATURAS EXTRANAS POR ESTOS LADOS, NO SE SI SEA SEGURO.   [ESPACIO]",
         L"Georgia", 20.0f, 1030, 72, Gdiplus::Color(245, 230, 220, 230));
@@ -1058,6 +1077,8 @@ int main()
         L"JAMES: ESTA BIEN, SIGUEME Y SALDREMOS DE ACA.   [ESPACIO]",
         L"Georgia", 20.0f, 760, 54, Gdiplus::Color(245, 230, 220, 230));
     initAudio();
+    initObjectivesHud();
+    initDamageOverlay();
 
     // create title and menu textures by ropchard
     titleText =
@@ -1172,6 +1193,7 @@ int main()
     std::vector<std::pair<std::string, std::string>> animFiles = {
         {"idle", "idle.fbx"},
         {"walking", "walking.fbx"},
+        {"running", "Running.fbx"},
         {"strafe_left", "left strafe walking.fbx"},
         {"strafe_right", "right strafe walking.fbx"},
         {"turn_left", "left turn 90.fbx"},
@@ -1220,6 +1242,7 @@ int main()
     AnimationState jamesAnimState;
     jamesAnimState.finalMatrices.assign(MAX_BONES, glm::mat4(1.0f));
     jamesAnimState.current = findClip(jamesAnimations, "idle");
+    configureShootingSystem(findClip(jamesAnimations, "rifle_fire"));
 
     // Load Angela and her authored idle animation.
     std::filesystem::path angelaDir = resourceDir.parent_path() / "models" / "angela";
@@ -1555,6 +1578,8 @@ int main()
         std::cout << "Shotgun model not found: " << shotgunPath.string() << std::endl;
         shotgunAvailable = false;
     }
+    initChestFlashlight(resourceDir);
+    initPyramidHeadSystem(resourceDir);
 
     std::cout << "==================" << std::endl;
 
@@ -1668,7 +1693,7 @@ int main()
                 else
                 {
                     closeCinematicPlayer();
-                    enterPlayingState();
+                    showObjectiveBriefing();
                 }
             }
 
@@ -1684,7 +1709,7 @@ int main()
                 else
                 {
                     closeCinematicPlayer();
-                    enterPlayingState();
+                    showObjectiveBriefing();
                 }
             }
 
@@ -1693,6 +1718,14 @@ int main()
             glClear(GL_COLOR_BUFFER_BIT);
 
             Sleep(4);
+        }
+        else if (currentState == OBJECTIVE_BRIEFING)
+        {
+            renderObjectiveOverlay(window, lightingShader, drawHudQuad);
+        }
+        else if (currentState == GAME_OVER)
+        {
+            renderGameOverScreen(lightingShader, drawHudQuad);
         }
         // =================================================================
         // CASO B: REGLAS PARA EL JUEGO ACTIVO (PLAYING)
@@ -1703,8 +1736,11 @@ int main()
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
             // Actualizaciones lógicas del mundo
-            updateFootstepAudio();
+            updateFootstepAudio(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS);
             updateThirdPersonCamera();
+            updateJamesHealth(deltaTime);
+            updateShootingSystem(window, deltaTime);
+            updatePyramidHeadSystem(deltaTime);
 
             bool angelaShouldRun = false;
             bool angelaShouldWalk = false;
@@ -1744,12 +1780,15 @@ int main()
             bool leftPressed = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
             bool rightPressed = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
             bool shiftPressed = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
-            bool firingPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+            bool firingShot = isShotAnimationActive();
 
             if (shotgunCollected)
             {
-                if (firingPressed && findClip(jamesAnimations, "rifle_fire"))
+                if (firingShot && !playerIsMoving && findClip(jamesAnimations, "rifle_fire"))
+                {
                     desiredClip = findClip(jamesAnimations, "rifle_fire");
+                    desiredLooping = false;
+                }
                 else if (playerIsMoving && shiftPressed && findClip(jamesAnimations, "rifle_run"))
                     desiredClip = findClip(jamesAnimations, "rifle_run");
                 else if (playerIsMoving && findClip(jamesAnimations, "rifle_walk"))
@@ -1761,6 +1800,10 @@ int main()
             {
                 desiredClip = findClip(jamesAnimations, "jump");
                 desiredLooping = false;
+            }
+            else if (playerIsMoving && shiftPressed && findClip(jamesAnimations, "running"))
+            {
+                desiredClip = findClip(jamesAnimations, "running");
             }
             else if ((forwardPressed || backwardPressed) && leftPressed && !rightPressed && findClip(jamesAnimations, "strafe_left"))
             {
@@ -1847,12 +1890,13 @@ int main()
             // world material every frame so practical lights drive the scene.
             lightingShader.setFloat("material_shininess", 14.0f);
             lightingShader.setFloat("material_specularStrength", 0.18f);
-            lightingShader.setFloat("material_ambientStrength", 0.25f);
+            lightingShader.setFloat("material_ambientStrength", 0.16f);
 
             // Luz Direccional global del entorno
             lightingShader.setVec3("dirLight_direction", -0.2f, -1.0f, -0.3f);
             // Weak overcast fill: most contrast now comes from authored LightPos nodes.
-            lightingShader.setVec3("dirLight_color", 0.18f, 0.20f, 0.17f);
+            lightingShader.setVec3("dirLight_color", 0.10f, 0.115f, 0.095f);
+            updateChestFlashlightLight(lightingShader);
 
             // Configuración de la luz puntal roja del punto de guardado
             // Distance-cull lights and select the nearest ones to bound shader cost.
@@ -1877,7 +1921,7 @@ int main()
             HorrorLight jamesFollowLight{
                 playerPosition + glm::vec3(0.0f, 2.05f, 0.0f),
                 glm::vec3(0.70f, 0.69f, 0.61f),
-                0.82f, 5.25f, true, 4.27f};
+                0.38f, 3.9f, true, 4.27f};
             HorrorLight angelaFollowLight{
                 angelaPosition + glm::vec3(0.0f, 0.78f, 0.0f),
                 glm::vec3(0.92f, 0.90f, 0.86f),
@@ -1886,7 +1930,8 @@ int main()
             const bool shotgunLightActive = shotgunAvailable && !shotgunCollected;
             const bool angelaLightActive = hasAngelaNode && angelaConversationStage == 0;
             int numPoints = glm::min(static_cast<int>(savePoints.size() + activeHorrorLights.size() + 1 + (hasAngelaNode ? 1 : 0) +
-                (shotgunLightActive ? 1 : 0) + (angelaLightActive ? 1 : 0)), 32);
+                (shotgunLightActive ? 1 : 0) + (angelaLightActive ? 1 : 0) + activePyramidHeadAuraCount() +
+                (isShotgunMuzzleFlashActive() ? 1 : 0)), 32);
             lightingShader.setInt("numPointLights", numPoints);
             int pointIndex = 0;
             for (size_t i = 0; i < savePoints.size() && pointIndex < numPoints; ++i, ++pointIndex)
@@ -1928,6 +1973,8 @@ int main()
                 sendHorrorLightToShader(lightingShader, pointIndex, angelaMeetLight, currentFrame);
                 ++pointIndex;
             }
+            uploadShotgunMuzzleFlash(lightingShader, pointIndex, numPoints);
+            uploadPyramidHeadAuras(lightingShader, pointIndex, numPoints, currentFrame);
             for (const auto &activeLight : activeHorrorLights)
             {
                 if (pointIndex >= numPoints)
@@ -2008,6 +2055,7 @@ int main()
             }
 
             // 3. Dibujar el modelo animado de James (Skinning habilitado)
+            renderPyramidHeadSystem(lightingShader);
             if (!jamesMeshes.empty())
             {
                 glm::mat4 jamesModel = glm::mat4(1.0f);
@@ -2040,6 +2088,7 @@ int main()
                 lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
                 lightingShader.setFloat("objectAlpha", 1.0f);
                 lightingShader.setInt("useSkinning", 0);
+                renderChestFlashlight(lightingShader, jamesModel, jamesBoneInfo, jamesAnimState);
             }
 
             // Angela at the authored angelainitialpos marker, idling in place.
@@ -2107,6 +2156,16 @@ int main()
                     // The shotgun's long axis is local X. Aim it from the trigger
                     // hand toward the support hand, so every clip drives the prop.
                     glm::vec3 supportAxis = glm::normalize(leftHand - rightHand);
+                    // The LeftHand bone is located at the wrist while the visible
+                    // support grip sits closer to the palm. Nudge only the barrel
+                    // target sideways; the trigger-hand anchor below stays fixed.
+                    glm::vec3 supportSide = glm::cross(supportAxis, glm::vec3(0.0f, 1.0f, 0.0f));
+                    if (glm::length(supportSide) > 0.01f)
+                    {
+                        supportSide = glm::normalize(supportSide);
+                        const glm::vec3 supportPalm = leftHand + supportSide * 0.10f;
+                        supportAxis = glm::normalize(supportPalm - rightHand);
+                    }
                     // The barrel extends along local +X: point it toward the
                     // support hand while the stock remains by the trigger arm.
                     glm::vec3 modelX = supportAxis;
@@ -2345,6 +2404,9 @@ int main()
                 lightingShader.setInt("fogEnabled", 1);
                 glEnable(GL_DEPTH_TEST);
             }
+            renderShootingCrosshair(lightingShader, drawHudQuad);
+            renderObjectivesHud(lightingShader, drawHudQuad);
+            renderLowHealthOverlay(lightingShader, drawHudQuad);
         }
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
@@ -2392,6 +2454,9 @@ int main()
         if (m.texture) glDeleteTextures(1, &m.texture);
     }
     shutdownAudio();
+    shutdownChestFlashlight();
+    shutdownPyramidHeadSystem();
+    shutdownDamageOverlay();
     Gdiplus::GdiplusShutdown(gdiplusToken);
 
     // Antes de glfwTerminate(), agregar:
@@ -2419,6 +2484,12 @@ void processInput(GLFWwindow *window)
     }
 
     if (currentState == CINEMATIC)
+        return;
+
+    if (processObjectiveOverlayInput(window))
+        return;
+
+    if (processHealthStateInput(window))
         return;
 
     playerIsMoving = false;
@@ -2455,6 +2526,7 @@ void processInput(GLFWwindow *window)
     if (ePressed && !eWasPressed && angelaDistance <= ANGELA_INTERACT_RADIUS)
     {
         playInteractionSound();
+        completeObjective(ObjectiveId::FindAngela);
         glfwHWND = GetActiveWindow();
         if (playCinematicVideo(angelaCinematicPath, glfwHWND))
         {
@@ -2477,6 +2549,7 @@ void processInput(GLFWwindow *window)
     {
         playInteractionSound();
         shotgunCollected = true;
+        completeObjective(ObjectiveId::FindShotgun);
         eWasPressed = true;
         return;
     }
@@ -2500,6 +2573,12 @@ void processInput(GLFWwindow *window)
         return;
     }
     eWasPressed = ePressed;
+
+    if (isShotAnimationActive())
+    {
+        playerIsMoving = false;
+        return;
+    }
 
     bool spacePressed = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
     if (spacePressed && !spaceWasPressed)

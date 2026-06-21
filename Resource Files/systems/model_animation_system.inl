@@ -190,6 +190,7 @@ MeshData processMesh(aiMesh *mesh, const aiScene *scene, const glm::mat4 &transf
     if (mesh->mMaterialIndex >= 0)
     {
         aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
+        mdata.materialName = material->GetName().C_Str();
         aiColor4D diffuseColor(1.0f, 1.0f, 1.0f, 1.0f);
         if (AI_SUCCESS == aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &diffuseColor))
         {

@@ -96,6 +96,7 @@ uniform vec3 spotLight_direction;
 uniform vec3 spotLight_color;
 uniform float spotLight_cutOff; // cos(inner)
 uniform float spotLight_outerCutOff; // cos(outer)
+uniform int spotLight_enabled;
 
 // calculate directional light contribution
 vec3 CalcDirectionalLight(vec3 normal, vec3 viewDir)
@@ -149,7 +150,12 @@ vec3 CalcSpotLight(vec3 normal, vec3 fragPos, vec3 viewDir)
     vec3 ambient = material_ambientStrength * spotLight_color * attenuation * intensity;
     vec3 diffuse = diff * spotLight_color * attenuation * intensity;
     vec3 specular = material_specularStrength * spec * spotLight_color * attenuation * intensity;
-    return ambient + diffuse + specular;
+    // A chest lamp also creates a faint short-range bounce on James' jacket
+    // and face. It is deliberately independent of the forward cone and fades
+    // quickly, so it never competes with the main beam.
+    float fillAttenuation = 1.0 / (1.0 + 2.0 * distance + 4.0 * distance * distance);
+    vec3 chestFill = spotLight_color * 0.16 * fillAttenuation;
+    return ambient + diffuse + specular + chestFill;
 }
 
 void main()
@@ -175,6 +181,8 @@ void main()
     {
         for (int i = 0; i < numPointLights; ++i)
             resultLighting += CalcPointLight(pointLights[i], norm, FragPos, viewDir);
+        if (spotLight_enabled == 1 && fogEnabled == 1)
+            resultLighting += CalcSpotLight(norm, FragPos, viewDir);
     }
 
     vec3 baseColor = texSample.rgb * objectColor;

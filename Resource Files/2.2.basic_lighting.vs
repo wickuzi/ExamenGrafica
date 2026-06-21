@@ -13,6 +13,7 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 uniform int useSkinning;
+uniform int rigidSkinning;
 
 const int MAX_BONES = 100;
 const int MAX_BONE_INFLUENCE = 4;
@@ -28,9 +29,16 @@ void main()
         vec3 skinnedNormal = vec3(0.0);
         float totalWeight = 0.0;
 
+        int strongestInfluence = 0;
+        for (int i = 1; i < MAX_BONE_INFLUENCE; ++i) {
+            if (aWeights[i] > aWeights[strongestInfluence])
+                strongestInfluence = i;
+        }
         for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
+            if (rigidSkinning == 1 && i != strongestInfluence)
+                continue;
             int boneId = int(aBoneIds[i]);
-            float weight = aWeights[i];
+            float weight = rigidSkinning == 1 ? 1.0 : aWeights[i];
             if (boneId < 0 || weight <= 0.0)
                 continue;
             if (boneId >= MAX_BONES) {
