@@ -76,6 +76,7 @@ void startBackgroundMusic();
 void playInteractionSound();
 void updateFootstepAudio();
 void shutdownAudio();
+void closeCinematicPlayer();
 bool audioCommand(const std::string &command);
 unsigned int loadTextureFromJpeg(const wchar_t *path);
 struct HudTexture;
@@ -284,6 +285,9 @@ bool playerIsMoving = false;
 bool footstepsPlaying = false;
 bool backgroundMusicPlaying = false;
 float footstepTimer = 0.0f;
+bool shotgunAvailable = false;
+bool shotgunCollected = false;
+glm::vec3 shotgunPosition(0.0f);
 
 // timing
 float deltaTime = 0.0f;
@@ -296,6 +300,7 @@ glm::vec3 savePointNormal = SAVE_POINT_WALL_NORMAL;
 std::vector<SavePoint> savePoints;
 std::vector<HorrorLight> horrorLights;
 const float SAVE_POINT_INTERACT_RADIUS = 1.45f;
+const float SHOTGUN_INTERACT_RADIUS = 1.35f;
 // Shared clear/fog color prevents a seam at the distant city horizon.
 const glm::vec3 FOG_COLOR(0.34f, 0.38f, 0.35f);
 // Distance/fog tuning: fog must become opaque before props are culled.
@@ -351,6 +356,14 @@ const float JAMES_FBX_SKIN_SCALE = 0.01f;
 const glm::vec3 JAMES_FBX_SKIN_OFFSET(0.0f, -0.90f, 0.0f);
 std::vector<unsigned int> jamesFallbackTextures;
 std::unordered_map<std::string, unsigned int> jamesFallbackTexturesByName;
+bool allowSkinnedTextureSearch = false;
+bool angelaCinematicPlaying = false;
+int angelaConversationStage = 0; // 0=not met, 1/2=dialogue lines, 3=following
+std::string angelaCinematicPath;
+const float ANGELA_INTERACT_RADIUS = 1.65f;
+const float ANGELA_GROUND_OFFSET = 1.83f;
+bool hasAngelaNode = false;
+glm::vec3 angelaPosition(0.0f);
 
 // default orientation tweak (degrees) to make model face +Z upright; adjust if needed
 const float MODEL_ROT_X = 0.0f;
@@ -585,6 +598,16 @@ void enterPlayingState()
     playerPosition.y = playerGroundY;
     updateThirdPersonCamera();
     startBackgroundMusic();
+}
+
+void finishAngelaCinematic()
+{
+    closeCinematicPlayer();
+    angelaCinematicPlaying = false;
+    currentState = PLAYING;
+    angelaConversationStage = 1;
+    spaceWasPressed = true;
+    firstMouse = true;
 }
 
 // Inicializar y reproducir video
@@ -1026,6 +1049,14 @@ int main()
     HudTexture saveTimeText = createTextTexture(L"19:42    2024/09/06    10:29", L"Georgia", 24.0f, 490, 48, Gdiplus::Color(210, 208, 200, 180));
     HudTexture savePromptText = createTextTexture(L"PRESS E TO RETURN", L"Georgia", 19.0f, 300, 40, Gdiplus::Color(230, 218, 210, 190));
     HudTexture saveInteractText = createTextTexture(L"PRESS E", L"Georgia", 20.0f, 112, 34, Gdiplus::Color(245, 230, 220, 218));
+    HudTexture shotgunInteractText = createTextTexture(L"PRESS E TO GRAB", L"Georgia", 18.0f, 205, 34, Gdiplus::Color(245, 230, 220, 218));
+    HudTexture angelaInteractText = createTextTexture(L"PRESS E TO INTERACT", L"Georgia", 18.0f, 245, 34, Gdiplus::Color(245, 230, 220, 218));
+    HudTexture angelaDialogueText = createTextTexture(
+        L"ANGELA: YO TAMBIEN ESTOY PERDIDA, HE VISTO A CRIATURAS EXTRANAS POR ESTOS LADOS, NO SE SI SEA SEGURO.   [ESPACIO]",
+        L"Georgia", 20.0f, 1030, 72, Gdiplus::Color(245, 230, 220, 230));
+    HudTexture jamesDialogueText = createTextTexture(
+        L"JAMES: ESTA BIEN, SIGUEME Y SALDREMOS DE ACA.   [ESPACIO]",
+        L"Georgia", 20.0f, 760, 54, Gdiplus::Color(245, 230, 220, 230));
     initAudio();
 
     // create title and menu textures by ropchard
@@ -1163,9 +1194,80 @@ int main()
             std::cout << "Animation not found: " << p.string() << std::endl;
         }
     }
+    std::filesystem::path gunAnimDir = resourceDir.parent_path() / "models" / "james" / "gunanimations";
+    if (!std::filesystem::exists(gunAnimDir))
+        gunAnimDir = resourceDir.parent_path().parent_path() / "models" / "james" / "gunanimations";
+    const std::vector<std::pair<std::string, std::string>> gunAnimFiles = {
+        {"rifle_idle", "Rifle Idle.fbx"},
+        {"rifle_walk", "Rifle Walk.fbx"},
+        {"rifle_run", "Rifle Run.fbx"},
+        {"rifle_fire", "Firing Rifle.fbx"}};
+    for (const auto &entry : gunAnimFiles)
+    {
+        const std::filesystem::path p = gunAnimDir / entry.second;
+        if (!std::filesystem::exists(p))
+        {
+            std::cout << "Gun animation not found: " << p.string() << std::endl;
+            continue;
+        }
+        AnimationClip clip = loadAnimationClip(p.string(), entry.first);
+        if (clip.valid)
+        {
+            jamesAnimations[entry.first] = clip;
+            std::cout << "Loaded gun animation: " << entry.first << std::endl;
+        }
+    }
     AnimationState jamesAnimState;
     jamesAnimState.finalMatrices.assign(MAX_BONES, glm::mat4(1.0f));
     jamesAnimState.current = findClip(jamesAnimations, "idle");
+
+    // Load Angela and her authored idle animation.
+    std::filesystem::path angelaDir = resourceDir.parent_path() / "models" / "angela";
+    if (!std::filesystem::exists(angelaDir))
+        angelaDir = resourceDir.parent_path().parent_path() / "models" / "angela";
+    const std::filesystem::path angelaModelPath = angelaDir / "Angela.fbx";
+    const std::filesystem::path angelaIdlePath = angelaDir / "animations" / "angela_idle.fbx";
+    const std::filesystem::path angelaWalkPath = angelaDir / "animations" / "angela_walk.fbx";
+    const std::filesystem::path angelaRunPath = angelaDir / "animations" / "Slow Run.fbx";
+    angelaCinematicPath = std::filesystem::absolute(angelaDir / "video" / "jamesmeetsangela.wmv").string();
+    glm::vec3 angelaAABBMin(FLT_MAX), angelaAABBMax(-FLT_MAX);
+    std::vector<MeshData> angelaMeshes;
+    std::unordered_map<std::string, BoneInfo> angelaBoneInfo;
+    int angelaBoneCount = 0;
+    glm::mat4 angelaGlobalInverseTransform(1.0f);
+    float angelaRenderScale = 1.0f;
+    AnimationClip angelaIdleClip;
+    AnimationClip angelaWalkClip;
+    AnimationClip angelaRunClip;
+    AnimationState angelaAnimState;
+    angelaAnimState.finalMatrices.assign(MAX_BONES, glm::mat4(1.0f));
+    if (std::filesystem::exists(angelaModelPath))
+    {
+        // Angela's FBX stores absolute texture paths from the authoring PC;
+        // permit basename lookup inside her local textures directory.
+        allowSkinnedTextureSearch = true;
+        // The standalone Angela.fbx is the texture/reference model but has no
+        // skin hierarchy. The idle FBX contains that same mesh plus its rig.
+        const std::filesystem::path &angelaSkinnedModelPath = std::filesystem::exists(angelaIdlePath)
+            ? angelaIdlePath : angelaModelPath;
+        angelaMeshes = loadModel(angelaSkinnedModelPath.string(), angelaAABBMin, angelaAABBMax,
+                                 &angelaBoneInfo, &angelaBoneCount, &angelaGlobalInverseTransform);
+        allowSkinnedTextureSearch = false;
+        const float angelaHeight = glm::max(angelaAABBMax.y - angelaAABBMin.y, 0.001f);
+        angelaRenderScale = 1.68f / angelaHeight;
+        std::cout << "Loaded Angela meshes: " << angelaMeshes.size()
+                  << " bones=" << angelaBoneCount << " scale=" << angelaRenderScale << std::endl;
+    }
+    if (std::filesystem::exists(angelaIdlePath))
+    {
+        angelaIdleClip = loadAnimationClip(angelaIdlePath.string(), "angela_idle");
+        if (angelaIdleClip.valid)
+            angelaAnimState.current = &angelaIdleClip;
+    }
+    if (std::filesystem::exists(angelaRunPath))
+        angelaRunClip = loadAnimationClip(angelaRunPath.string(), "angela_slow_run");
+    if (std::filesystem::exists(angelaWalkPath))
+        angelaWalkClip = loadAnimationClip(angelaWalkPath.string(), "angela_walk");
 
     // Load map/scene if present. Supports either a clean models/map layout or the current SketchUp export under models/james.
     std::string mapModelPath;
@@ -1216,6 +1318,10 @@ int main()
     bool hasSpawnNode = false;
     glm::mat4 spawnNodeTransform(1.0f);
     std::vector<glm::mat4> saveNodeTransforms;
+    glm::mat4 shotgunNodeTransform(1.0f);
+    bool hasShotgunNode = false;
+    glm::mat4 angelaNodeTransform(1.0f);
+    float angelaYaw = 0.0f;
     std::vector<glm::mat4> authoredWalkAreaTransforms;
     std::vector<glm::mat4> authoredLightPosTransforms;
     bool mapUsesZUp = false;
@@ -1235,6 +1341,8 @@ int main()
         isTownVisualMap = mapStem.rfind("town_visual", 0) == 0;
         hasSpawnNode = loadNodeWorldTransform(mapModelPath, "spawn_player", spawnNodeTransform);
         loadNodeWorldTransforms(mapModelPath, "savepoint", saveNodeTransforms);
+        hasShotgunNode = loadNodeWorldTransform(mapModelPath, "shotgunpos", shotgunNodeTransform);
+        hasAngelaNode = loadNodeWorldTransform(mapModelPath, "angelainitialpos", angelaNodeTransform);
         loadNodeWorldTransforms(mapModelPath, "walkarea", authoredWalkAreaTransforms);
         loadNodeWorldTransforms(mapModelPath, "lightpos", authoredLightPosTransforms);
         if (authoredWalkAreaTransforms.size() != 12)
@@ -1288,6 +1396,29 @@ int main()
             return !mesh.renderable || mesh.walkArea || mesh.walkZone || mesh.collider;
         }), mapMeshes.end());
         std::cout << "Renderable map meshes after helper purge: " << mapMeshes.size() << std::endl;
+
+        if (hasShotgunNode)
+        {
+            shotgunPosition = glm::vec3((mapModelTransform * shotgunNodeTransform)[3]);
+            shotgunAvailable = true;
+            shotgunCollected = false;
+            std::cout << "Shotgun pickup at (" << shotgunPosition.x << ", "
+                      << shotgunPosition.y << ", " << shotgunPosition.z << ")" << std::endl;
+        }
+
+        if (hasAngelaNode)
+        {
+            const glm::mat4 angelaWorld = mapModelTransform * angelaNodeTransform;
+            angelaPosition = glm::vec3(angelaWorld[3]);
+            glm::vec3 angelaForward = glm::vec3(angelaWorld * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
+            if (glm::length(glm::vec2(angelaForward.x, angelaForward.z)) > 0.001f)
+                angelaYaw = glm::degrees(atan2(angelaForward.x, angelaForward.z));
+            float angelaGroundY = angelaPosition.y;
+            if (findAnyGroundHeightAt(angelaPosition.x, angelaPosition.z, angelaGroundY))
+                angelaPosition.y = angelaGroundY + ANGELA_GROUND_OFFSET;
+            std::cout << "Angela initial position: (" << angelaPosition.x << ", "
+                      << angelaPosition.y << ", " << angelaPosition.z << ") yaw=" << angelaYaw << std::endl;
+        }
 
         collisionBoxes.clear();
         savePoints.clear();
@@ -1408,6 +1539,23 @@ int main()
                   << " initialGroundY=" << playerGroundY << std::endl;
     }
 
+    glm::vec3 shotgunAABBMin(FLT_MAX), shotgunAABBMax(-FLT_MAX);
+    std::vector<MeshData> shotgunMeshes;
+    float shotgunRenderScale = 1.0f;
+    const std::filesystem::path shotgunPath = gunAnimDir / "shotgun.glb";
+    if (shotgunAvailable && std::filesystem::exists(shotgunPath))
+    {
+        shotgunMeshes = loadModel(shotgunPath.string(), shotgunAABBMin, shotgunAABBMax);
+        const glm::vec3 shotgunSize = shotgunAABBMax - shotgunAABBMin;
+        shotgunRenderScale = 1.15f / glm::max(glm::max(shotgunSize.x, shotgunSize.y), glm::max(shotgunSize.z, 0.001f));
+        std::cout << "Loaded shotgun pickup meshes: " << shotgunMeshes.size() << std::endl;
+    }
+    else if (shotgunAvailable)
+    {
+        std::cout << "Shotgun model not found: " << shotgunPath.string() << std::endl;
+        shotgunAvailable = false;
+    }
+
     std::cout << "==================" << std::endl;
 
     // render loop
@@ -1515,19 +1663,29 @@ int main()
             if (isCinematicFinished())
             {
                 std::cout << "Cinemática finalizada, iniciando partida..." << std::endl;
-                closeCinematicPlayer();
-                enterPlayingState();
+                if (angelaCinematicPlaying)
+                    finishAngelaCinematic();
+                else
+                {
+                    closeCinematicPlayer();
+                    enterPlayingState();
+                }
             }
 
             // Permitir saltar la cinemática con ESC, ENTER o SPACE
-            if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS ||
+            else if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS ||
                 glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS ||
                 glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
             {
 
                 std::cout << "Saltando cinemática..." << std::endl;
-                closeCinematicPlayer();
-                enterPlayingState();
+                if (angelaCinematicPlaying)
+                    finishAngelaCinematic();
+                else
+                {
+                    closeCinematicPlayer();
+                    enterPlayingState();
+                }
             }
 
             // Renderizar un fondo negro (el video se dibuja automáticamente)
@@ -1548,6 +1706,36 @@ int main()
             updateFootstepAudio();
             updateThirdPersonCamera();
 
+            bool angelaShouldRun = false;
+            bool angelaShouldWalk = false;
+            if (hasAngelaNode && angelaConversationStage >= 3)
+            {
+                const float yawRadians = glm::radians(playerYaw);
+                const glm::vec3 jamesForward(sinf(yawRadians), 0.0f, cosf(yawRadians));
+                const glm::vec3 jamesRight(jamesForward.z, 0.0f, -jamesForward.x);
+                const glm::vec3 followTarget = playerPosition - jamesForward * 1.15f + jamesRight * 0.38f;
+                glm::vec3 toTarget = followTarget - angelaPosition;
+                toTarget.y = 0.0f;
+                const float followDistance = glm::length(toTarget);
+                const bool jamesRunning = playerIsMoving && glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+                angelaShouldRun = jamesRunning;
+                angelaShouldWalk = playerIsMoving && !jamesRunning;
+                if (playerIsMoving && followDistance > 0.55f)
+                {
+                    const glm::vec3 direction = toTarget / followDistance;
+                    const float followSpeed = jamesRunning ? 3.15f : 1.65f;
+                    glm::vec3 nextAngelaPosition = angelaPosition + direction * glm::min(followDistance, followSpeed * deltaTime);
+                    float followerGroundY = nextAngelaPosition.y - ANGELA_GROUND_OFFSET;
+                    if (findWalkAreaHeightAt(nextAngelaPosition.x, nextAngelaPosition.z, followerGroundY) ||
+                        findAnyGroundHeightAt(nextAngelaPosition.x, nextAngelaPosition.z, followerGroundY))
+                    {
+                        nextAngelaPosition.y = followerGroundY + ANGELA_GROUND_OFFSET;
+                        angelaPosition = nextAngelaPosition;
+                    }
+                    angelaYaw = glm::degrees(atan2(direction.x, direction.z));
+                }
+            }
+
             // 1. Manejo del árbol de Animación de James
             const AnimationClip *desiredClip = findClip(jamesAnimations, "idle");
             bool desiredLooping = true;
@@ -1555,8 +1743,21 @@ int main()
             bool backwardPressed = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
             bool leftPressed = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
             bool rightPressed = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+            bool shiftPressed = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+            bool firingPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
-            if (jumpRequested && findClip(jamesAnimations, "jump"))
+            if (shotgunCollected)
+            {
+                if (firingPressed && findClip(jamesAnimations, "rifle_fire"))
+                    desiredClip = findClip(jamesAnimations, "rifle_fire");
+                else if (playerIsMoving && shiftPressed && findClip(jamesAnimations, "rifle_run"))
+                    desiredClip = findClip(jamesAnimations, "rifle_run");
+                else if (playerIsMoving && findClip(jamesAnimations, "rifle_walk"))
+                    desiredClip = findClip(jamesAnimations, "rifle_walk");
+                else if (findClip(jamesAnimations, "rifle_idle"))
+                    desiredClip = findClip(jamesAnimations, "rifle_idle");
+            }
+            else if (jumpRequested && findClip(jamesAnimations, "jump"))
             {
                 desiredClip = findClip(jamesAnimations, "jump");
                 desiredLooping = false;
@@ -1592,6 +1793,24 @@ int main()
                 matrix = glm::translate(glm::mat4(1.0f), JAMES_FBX_SKIN_OFFSET) *
                          glm::scale(glm::mat4(1.0f), glm::vec3(JAMES_FBX_SKIN_SCALE)) *
                          matrix;
+            }
+            const AnimationClip *desiredAngelaClip = &angelaIdleClip;
+            if (angelaShouldRun && angelaRunClip.valid)
+                desiredAngelaClip = &angelaRunClip;
+            else if (angelaShouldWalk && angelaWalkClip.valid)
+                desiredAngelaClip = &angelaWalkClip;
+            if (hasAngelaNode && desiredAngelaClip->valid)
+            {
+                updateAnimation(angelaAnimState, desiredAngelaClip, deltaTime, angelaBoneInfo,
+                                angelaBoneCount, angelaGlobalInverseTransform, true);
+                // Angela and James are Mixamo FBX exports in centimeters. Use
+                // the same skin-space conversion so both render at human scale.
+                for (auto &matrix : angelaAnimState.finalMatrices)
+                {
+                    matrix = glm::translate(glm::mat4(1.0f), JAMES_FBX_SKIN_OFFSET) *
+                             glm::scale(glm::mat4(1.0f), glm::vec3(JAMES_FBX_SKIN_SCALE)) *
+                             matrix;
+                }
             }
             jumpRequested = false;
 
@@ -1659,8 +1878,15 @@ int main()
                 playerPosition + glm::vec3(0.0f, 2.05f, 0.0f),
                 glm::vec3(0.70f, 0.69f, 0.61f),
                 0.82f, 5.25f, true, 4.27f};
+            HorrorLight angelaFollowLight{
+                angelaPosition + glm::vec3(0.0f, 0.78f, 0.0f),
+                glm::vec3(0.92f, 0.90f, 0.86f),
+                0.68f, 4.8f, false, 1.19f};
 
-            int numPoints = glm::min(static_cast<int>(savePoints.size() + activeHorrorLights.size() + 1), 32);
+            const bool shotgunLightActive = shotgunAvailable && !shotgunCollected;
+            const bool angelaLightActive = hasAngelaNode && angelaConversationStage == 0;
+            int numPoints = glm::min(static_cast<int>(savePoints.size() + activeHorrorLights.size() + 1 + (hasAngelaNode ? 1 : 0) +
+                (shotgunLightActive ? 1 : 0) + (angelaLightActive ? 1 : 0)), 32);
             lightingShader.setInt("numPointLights", numPoints);
             int pointIndex = 0;
             for (size_t i = 0; i < savePoints.size() && pointIndex < numPoints; ++i, ++pointIndex)
@@ -1677,6 +1903,29 @@ int main()
             if (pointIndex < numPoints)
             {
                 sendHorrorLightToShader(lightingShader, pointIndex, jamesFollowLight, currentFrame);
+                ++pointIndex;
+            }
+            if (hasAngelaNode && pointIndex < numPoints)
+            {
+                sendHorrorLightToShader(lightingShader, pointIndex, angelaFollowLight, currentFrame);
+                ++pointIndex;
+            }
+            if (shotgunLightActive && pointIndex < numPoints)
+            {
+                HorrorLight shotgunLight{
+                    shotgunPosition + glm::vec3(0.0f, 0.85f, 0.0f),
+                    glm::vec3(1.0f, 0.015f, 0.008f),
+                    2.4f, 6.5f, true, 2.73f};
+                sendHorrorLightToShader(lightingShader, pointIndex, shotgunLight, currentFrame);
+                ++pointIndex;
+            }
+            if (angelaLightActive && pointIndex < numPoints)
+            {
+                HorrorLight angelaMeetLight{
+                    angelaPosition + glm::vec3(0.0f, 0.45f, 0.0f),
+                    glm::vec3(1.0f, 0.012f, 0.006f),
+                    2.25f, 6.8f, true, 5.31f};
+                sendHorrorLightToShader(lightingShader, pointIndex, angelaMeetLight, currentFrame);
                 ++pointIndex;
             }
             for (const auto &activeLight : activeHorrorLights)
@@ -1730,6 +1979,34 @@ int main()
                 lightingShader.setInt("useSkinning", 0);
             }
 
+            // Shotgun pickup: authored position from the shotgunpos Blender empty.
+            if (shotgunAvailable && !shotgunCollected && !shotgunMeshes.empty())
+            {
+                const glm::vec3 shotgunCenter = (shotgunAABBMin + shotgunAABBMax) * 0.5f;
+                glm::mat4 shotgunModel(1.0f);
+                shotgunModel = glm::translate(shotgunModel, shotgunPosition + glm::vec3(0.0f, 0.08f, 0.0f));
+                shotgunModel = glm::rotate(shotgunModel, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+                shotgunModel = glm::scale(shotgunModel, glm::vec3(shotgunRenderScale));
+                shotgunModel = glm::translate(shotgunModel, -shotgunCenter);
+                lightingShader.setMat4("model", shotgunModel);
+                lightingShader.setInt("useSkinning", 0);
+                lightingShader.setFloat("alphaCutoff", 0.01f);
+                for (auto &m : shotgunMeshes)
+                {
+                    lightingShader.setVec3("objectColor", m.materialColor);
+                    lightingShader.setFloat("objectAlpha", m.materialAlpha);
+                    lightingShader.setInt("useTextureAlpha", m.useTextureAlpha ? 1 : 0);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, m.texture);
+                    glBindVertexArray(m.VAO);
+                    glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                }
+                lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+                lightingShader.setFloat("objectAlpha", 1.0f);
+                lightingShader.setInt("useTextureAlpha", 1);
+                lightingShader.setFloat("alphaCutoff", 0.38f);
+            }
+
             // 3. Dibujar el modelo animado de James (Skinning habilitado)
             if (!jamesMeshes.empty())
             {
@@ -1763,6 +2040,119 @@ int main()
                 lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
                 lightingShader.setFloat("objectAlpha", 1.0f);
                 lightingShader.setInt("useSkinning", 0);
+            }
+
+            // Angela at the authored angelainitialpos marker, idling in place.
+            if (hasAngelaNode && !angelaMeshes.empty())
+            {
+                const glm::vec3 angelaCenter = (angelaAABBMin + angelaAABBMax) * 0.5f;
+                glm::mat4 angelaModel(1.0f);
+                angelaModel = glm::translate(angelaModel, angelaPosition);
+                angelaModel = glm::rotate(angelaModel, glm::radians(angelaYaw), glm::vec3(0.0f, 1.0f, 0.0f));
+                angelaModel = glm::scale(angelaModel, glm::vec3(angelaRenderScale));
+                angelaModel = glm::translate(angelaModel, glm::vec3(-angelaCenter.x, -angelaAABBMin.y, -angelaCenter.z));
+                lightingShader.setMat4("model", angelaModel);
+                lightingShader.setInt("useSkinning", angelaBoneCount > 0 && angelaAnimState.current ? 1 : 0);
+                for (int i = 0; i < glm::min(angelaBoneCount, MAX_BONES); ++i)
+                    lightingShader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", angelaAnimState.finalMatrices[i]);
+                for (size_t meshIndex = 0; meshIndex < angelaMeshes.size(); ++meshIndex)
+                {
+                    auto &m = angelaMeshes[meshIndex];
+                    lightingShader.setVec3("objectColor", m.materialColor);
+                    lightingShader.setFloat("objectAlpha", m.materialAlpha);
+                    lightingShader.setInt("useTextureAlpha", 1);
+                    lightingShader.setInt("useWhiteChromaKey", 0);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, m.texture);
+                    glBindVertexArray(m.VAO);
+                    glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                }
+                lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+                lightingShader.setFloat("objectAlpha", 1.0f);
+                lightingShader.setInt("useSkinning", 0);
+            }
+
+            // Equipped shotgun. The rifle animations already pose both hands;
+            // keep the prop aligned to James so it remains visible in every armed clip.
+            if (shotgunCollected && !shotgunMeshes.empty())
+            {
+                const glm::vec3 shotgunCenter = (shotgunAABBMin + shotgunAABBMax) * 0.5f;
+                glm::vec3 jamesCenter = (jamesAABBMin + jamesAABBMax) * 0.5f;
+                glm::mat4 jamesWorld(1.0f);
+                jamesWorld = glm::translate(jamesWorld, playerPosition);
+                jamesWorld = glm::rotate(jamesWorld, glm::radians(MODEL_ROT_X), glm::vec3(1.0f, 0.0f, 0.0f));
+                jamesWorld = glm::rotate(jamesWorld, glm::radians(MODEL_ROT_Y + playerYaw), glm::vec3(0.0f, 1.0f, 0.0f));
+                jamesWorld = glm::rotate(jamesWorld, glm::radians(MODEL_ROT_Z), glm::vec3(0.0f, 0.0f, 1.0f));
+                jamesWorld = glm::scale(jamesWorld, glm::vec3(jamesRenderScale));
+                jamesWorld = glm::translate(jamesWorld, glm::vec3(-jamesCenter.x, -jamesAABBMin.y, -jamesCenter.z));
+
+                auto animatedHandPosition = [&](const std::string &boneName, glm::vec3 &outPosition)
+                {
+                    auto bone = jamesBoneInfo.find(boneName);
+                    if (bone == jamesBoneInfo.end() || bone->second.id < 0 || bone->second.id >= static_cast<int>(jamesAnimState.finalMatrices.size()))
+                        return false;
+                    // final = skinCorrection * globalInverse * animatedGlobal * offset.
+                    // Removing the inverse-bind offset gives the animated bone origin.
+                    glm::mat4 animatedBone = jamesAnimState.finalMatrices[bone->second.id] * glm::inverse(bone->second.offset);
+                    outPosition = glm::vec3(jamesWorld * animatedBone * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+                    return true;
+                };
+
+                glm::vec3 rightHand, leftHand;
+                bool hasRightHand = animatedHandPosition("mixamorig:RightHand", rightHand);
+                bool hasLeftHand = animatedHandPosition("mixamorig:LeftHand", leftHand);
+                glm::mat4 equippedModel(1.0f);
+                if (hasRightHand && hasLeftHand && glm::length(leftHand - rightHand) > 0.05f)
+                {
+                    // The shotgun's long axis is local X. Aim it from the trigger
+                    // hand toward the support hand, so every clip drives the prop.
+                    glm::vec3 supportAxis = glm::normalize(leftHand - rightHand);
+                    // The barrel extends along local +X: point it toward the
+                    // support hand while the stock remains by the trigger arm.
+                    glm::vec3 modelX = supportAxis;
+                    glm::vec3 modelZ = glm::cross(modelX, glm::vec3(0.0f, 1.0f, 0.0f));
+                    if (glm::length(modelZ) < 0.01f)
+                        modelZ = glm::vec3(0.0f, 0.0f, 1.0f);
+                    else
+                        modelZ = glm::normalize(modelZ);
+                    glm::vec3 modelY = glm::normalize(glm::cross(modelZ, modelX));
+                    glm::mat4 handBasis(1.0f);
+                    handBasis[0] = glm::vec4(modelX, 0.0f);
+                    handBasis[1] = glm::vec4(modelY, 0.0f);
+                    handBasis[2] = glm::vec4(modelZ, 0.0f);
+                    glm::vec3 gripCenter = rightHand + supportAxis * 0.24f - modelY * 0.035f;
+                    equippedModel = glm::translate(glm::mat4(1.0f), gripCenter) * handBasis;
+                }
+                else
+                {
+                    // Safe fallback for models whose hand bones were renamed.
+                    equippedModel = glm::translate(equippedModel, playerPosition);
+                    equippedModel = glm::rotate(equippedModel, glm::radians(playerYaw), glm::vec3(0.0f, 1.0f, 0.0f));
+                    equippedModel = glm::translate(equippedModel, glm::vec3(0.08f, 1.12f, 0.30f));
+                    equippedModel = glm::rotate(equippedModel, glm::radians(258.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                }
+                equippedModel = glm::scale(equippedModel, glm::vec3(shotgunRenderScale));
+                equippedModel = glm::translate(equippedModel, -shotgunCenter);
+
+                lightingShader.setMat4("model", equippedModel);
+                lightingShader.setInt("useSkinning", 0);
+                lightingShader.setFloat("alphaCutoff", 0.01f);
+                lightingShader.setFloat("emissiveStrength", 0.06f);
+                for (auto &m : shotgunMeshes)
+                {
+                    lightingShader.setVec3("objectColor", m.materialColor);
+                    lightingShader.setFloat("objectAlpha", m.materialAlpha);
+                    lightingShader.setInt("useTextureAlpha", m.useTextureAlpha ? 1 : 0);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, m.texture);
+                    glBindVertexArray(m.VAO);
+                    glDrawElements(GL_TRIANGLES, (GLsizei)m.indexCount, GL_UNSIGNED_INT, 0);
+                }
+                lightingShader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+                lightingShader.setFloat("objectAlpha", 1.0f);
+                lightingShader.setInt("useTextureAlpha", 1);
+                lightingShader.setFloat("alphaCutoff", 0.38f);
+                lightingShader.setFloat("emissiveStrength", 0.0f);
             }
 
             // 4. Dibujar geometrías físicas del punto de guardado (Hojas de papel y discos)
@@ -1810,8 +2200,13 @@ int main()
                 }
             }
             bool savePointInRange = saveDistance <= SAVE_POINT_INTERACT_RADIUS;
+            const bool shotgunInRange = shotgunAvailable && !shotgunCollected &&
+                glm::length(glm::vec2(playerPosition.x - shotgunPosition.x, playerPosition.z - shotgunPosition.z)) <= SHOTGUN_INTERACT_RADIUS;
+            const bool angelaInRange = hasAngelaNode && angelaConversationStage == 0 &&
+                glm::length(glm::vec2(playerPosition.x - angelaPosition.x, playerPosition.z - angelaPosition.z)) <= ANGELA_INTERACT_RADIUS;
+            const bool dialogueVisible = angelaConversationStage == 1 || angelaConversationStage == 2;
 
-            if (saveMenuOpen || savePointInRange)
+            if (saveMenuOpen || savePointInRange || shotgunInRange || angelaInRange || dialogueVisible)
             {
                 // Configuración común para pintar elementos 2D superpuestos
                 glDisable(GL_DEPTH_TEST);
@@ -1914,6 +2309,26 @@ int main()
                     drawHudQuad(saveTimeText.texture, 500.0f, 220.0f, static_cast<float>(saveTimeText.width), static_cast<float>(saveTimeText.height), glm::vec3(1.0f), 1.0f);
                     drawHudQuad(savePromptText.texture, 948.0f, 660.0f, static_cast<float>(savePromptText.width), static_cast<float>(savePromptText.height), glm::vec3(1.0f), 1.0f);
                 }
+                else if (dialogueVisible)
+                {
+                    const HudTexture &line = angelaConversationStage == 1 ? angelaDialogueText : jamesDialogueText;
+                    const float panelWidth = glm::min(static_cast<float>(line.width + 36), 1120.0f);
+                    drawHudQuad(getWhiteTexture(), 70.0f, 590.0f, panelWidth, 92.0f, glm::vec3(0.08f, 0.0f, 0.0f), 0.78f);
+                    drawHudQuad(getWhiteTexture(), 70.0f, 590.0f, panelWidth, 2.0f, glm::vec3(0.70f, 0.08f, 0.06f), 0.55f);
+                    drawHudQuad(line.texture, 88.0f, 602.0f, static_cast<float>(line.width), static_cast<float>(line.height), glm::vec3(1.0f), 1.0f);
+                }
+                else if (angelaInRange)
+                {
+                    drawHudQuad(getWhiteTexture(), 530.0f, 628.0f, 285.0f, 32.0f, glm::vec3(0.12f, 0.0f, 0.0f), 0.48f);
+                    drawHudQuad(getWhiteTexture(), 530.0f, 628.0f, 285.0f, 1.0f, glm::vec3(0.62f, 0.08f, 0.06f), 0.42f);
+                    drawHudQuad(angelaInteractText.texture, 548.0f, 630.0f, static_cast<float>(angelaInteractText.width), static_cast<float>(angelaInteractText.height), glm::vec3(1.0f), 1.0f);
+                }
+                else if (shotgunInRange)
+                {
+                    drawHudQuad(getWhiteTexture(), 560.0f, 628.0f, 235.0f, 32.0f, glm::vec3(0.12f, 0.0f, 0.0f), 0.48f);
+                    drawHudQuad(getWhiteTexture(), 560.0f, 628.0f, 235.0f, 1.0f, glm::vec3(0.62f, 0.08f, 0.06f), 0.42f);
+                    drawHudQuad(shotgunInteractText.texture, 575.0f, 630.0f, static_cast<float>(shotgunInteractText.width), static_cast<float>(shotgunInteractText.height), glm::vec3(1.0f), 1.0f);
+                }
                 else if (savePointInRange)
                 {
                     // Si solo está cerca, muestra el indicador inferior derecho para interactuar (Letra E)
@@ -1962,6 +2377,20 @@ int main()
         if (m.texture)
             glDeleteTextures(1, &m.texture);
     }
+    for (auto &m : shotgunMeshes)
+    {
+        if (m.VAO) glDeleteVertexArrays(1, &m.VAO);
+        if (m.VBO) glDeleteBuffers(1, &m.VBO);
+        if (m.EBO) glDeleteBuffers(1, &m.EBO);
+        if (m.texture) glDeleteTextures(1, &m.texture);
+    }
+    for (auto &m : angelaMeshes)
+    {
+        if (m.VAO) glDeleteVertexArrays(1, &m.VAO);
+        if (m.VBO) glDeleteBuffers(1, &m.VBO);
+        if (m.EBO) glDeleteBuffers(1, &m.EBO);
+        if (m.texture) glDeleteTextures(1, &m.texture);
+    }
     shutdownAudio();
     Gdiplus::GdiplusShutdown(gdiplusToken);
 
@@ -2009,6 +2438,48 @@ void processInput(GLFWwindow *window)
 
     if (escapePressed)
         glfwSetWindowShouldClose(window, true);
+
+    bool dialogueSpacePressed = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+    if (angelaConversationStage == 1 || angelaConversationStage == 2)
+    {
+        if (dialogueSpacePressed && !spaceWasPressed)
+            ++angelaConversationStage;
+        spaceWasPressed = dialogueSpacePressed;
+        eWasPressed = ePressed;
+        return;
+    }
+
+    const float angelaDistance = (hasAngelaNode && angelaConversationStage == 0)
+        ? glm::length(glm::vec2(playerPosition.x - angelaPosition.x, playerPosition.z - angelaPosition.z))
+        : FLT_MAX;
+    if (ePressed && !eWasPressed && angelaDistance <= ANGELA_INTERACT_RADIUS)
+    {
+        playInteractionSound();
+        glfwHWND = GetActiveWindow();
+        if (playCinematicVideo(angelaCinematicPath, glfwHWND))
+        {
+            angelaCinematicPlaying = true;
+            currentState = CINEMATIC;
+        }
+        else
+        {
+            angelaConversationStage = 1;
+            spaceWasPressed = true;
+        }
+        eWasPressed = true;
+        return;
+    }
+
+    const float shotgunDistance = (shotgunAvailable && !shotgunCollected)
+        ? glm::length(glm::vec2(playerPosition.x - shotgunPosition.x, playerPosition.z - shotgunPosition.z))
+        : FLT_MAX;
+    if (ePressed && !eWasPressed && shotgunDistance <= SHOTGUN_INTERACT_RADIUS)
+    {
+        playInteractionSound();
+        shotgunCollected = true;
+        eWasPressed = true;
+        return;
+    }
 
     float saveDistance = FLT_MAX;
     for (const SavePoint &point : savePoints)

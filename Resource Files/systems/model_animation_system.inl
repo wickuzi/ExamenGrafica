@@ -43,15 +43,47 @@ MeshData processMesh(aiMesh *mesh, const aiScene *scene, const glm::mat4 &transf
                 float weight = bone->mWeights[weightIndex].mWeight;
                 if (vertexId >= boneData.size())
                     continue;
+                bool inserted = false;
                 for (int slot = 0; slot < MAX_BONE_INFLUENCE; ++slot)
                 {
                     if (boneData[vertexId].ids[slot] < 0)
                     {
                         boneData[vertexId].ids[slot] = boneID;
                         boneData[vertexId].weights[slot] = weight;
+                        inserted = true;
                         break;
                     }
                 }
+                if (!inserted)
+                {
+                    int weakestSlot = 0;
+                    for (int slot = 1; slot < MAX_BONE_INFLUENCE; ++slot)
+                    {
+                        if (boneData[vertexId].weights[slot] < boneData[vertexId].weights[weakestSlot])
+                            weakestSlot = slot;
+                    }
+                    if (weight > boneData[vertexId].weights[weakestSlot])
+                    {
+                        boneData[vertexId].ids[weakestSlot] = boneID;
+                        boneData[vertexId].weights[weakestSlot] = weight;
+                    }
+                }
+            }
+        }
+
+        // A vertex can contain more influences than the four supported by the
+        // shader. Renormalize the retained weights so discarded influences do
+        // not collapse vertices toward the skeleton origin and create stretched
+        // bright triangles across hands, elbows, or sleeves.
+        for (auto &vertexBones : boneData)
+        {
+            float retainedWeight = 0.0f;
+            for (float weight : vertexBones.weights)
+                retainedWeight += weight;
+            if (retainedWeight > 0.00001f)
+            {
+                for (float &weight : vertexBones.weights)
+                    weight /= retainedWeight;
             }
         }
     }
@@ -200,12 +232,12 @@ MeshData processMesh(aiMesh *mesh, const aiScene *scene, const glm::mat4 &transf
                                   alphaMaterialName.find("decal") != std::string::npos;
         mdata.isFoliage = alphaMaterialName.find("foliage") != std::string::npos;
         const bool isMapMesh = boneInfoMap == nullptr;
-        texid = loadMaterialTexture(material, scene, directory, loaded, isMapMesh);
+        texid = loadMaterialTexture(material, scene, directory, loaded, isMapMesh || allowSkinnedTextureSearch);
         if (isMapMesh && texid == 0)
         {
             texid = loadTextureByMaterialName(material->GetName().C_Str(), directory, loaded);
         }
-        if (texid == 0 && boneInfoMap && !jamesFallbackTextures.empty())
+        if (texid == 0 && boneInfoMap && !allowSkinnedTextureSearch && !jamesFallbackTextures.empty())
         {
             std::string materialName = material->GetName().C_Str();
             std::string lowerName = materialName;
