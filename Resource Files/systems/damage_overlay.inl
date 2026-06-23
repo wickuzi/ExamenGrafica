@@ -1,7 +1,8 @@
 struct DamageOverlay
 {
     unsigned int vignetteTexture = 0;
-    HudTexture deathTitle;
+    HudTexture jamesDeathTitle;
+    HudTexture angelaDeathTitle;
     HudTexture deathPrompt;
 };
 
@@ -38,11 +39,14 @@ void initDamageOverlay()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
-    damageOverlay.deathTitle = createTextTexture(
+    damageOverlay.jamesDeathTitle = createTextTexture(
         L"JAMES HA MUERTO", L"Georgia", 52.0f, 620, 82,
         Gdiplus::Color(245, 205, 25, 22));
+    damageOverlay.angelaDeathTitle = createTextTexture(
+        L"ANGELA HA MUERTO", L"Georgia", 52.0f, 660, 82,
+        Gdiplus::Color(245, 205, 25, 22));
     damageOverlay.deathPrompt = createTextTexture(
-        L"PRESIONA ENTER O ESCAPE PARA SALIR", L"Georgia", 20.0f, 520, 42,
+        L"PRESIONA ESPACIO PARA VOLVER AL MENU PRINCIPAL", L"Georgia", 20.0f, 680, 42,
         Gdiplus::Color(225, 205, 190, 185));
 }
 
@@ -85,9 +89,11 @@ void renderGameOverScreen(Shader &lightingShader, DrawHudQuad &&drawHudQuad)
     prepareDamageOverlayShader<DrawHudQuad>(lightingShader);
     drawHudQuad(damageOverlay.vignetteTexture, 0.0f, 0.0f,
                 static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), glm::vec3(1.0f), 1.0f);
-    drawHudQuad(damageOverlay.deathTitle.texture,
-                (SCR_WIDTH - damageOverlay.deathTitle.width) * 0.5f, 280.0f,
-                static_cast<float>(damageOverlay.deathTitle.width), static_cast<float>(damageOverlay.deathTitle.height), glm::vec3(1.0f), 1.0f);
+    const HudTexture &deathTitle = getGameOverCause() == GameOverCause::Angela
+        ? damageOverlay.angelaDeathTitle : damageOverlay.jamesDeathTitle;
+    drawHudQuad(deathTitle.texture,
+                (SCR_WIDTH - deathTitle.width) * 0.5f, 280.0f,
+                static_cast<float>(deathTitle.width), static_cast<float>(deathTitle.height), glm::vec3(1.0f), 1.0f);
     drawHudQuad(damageOverlay.deathPrompt.texture,
                 (SCR_WIDTH - damageOverlay.deathPrompt.width) * 0.5f, 390.0f,
                 static_cast<float>(damageOverlay.deathPrompt.width), static_cast<float>(damageOverlay.deathPrompt.height), glm::vec3(1.0f), 1.0f);

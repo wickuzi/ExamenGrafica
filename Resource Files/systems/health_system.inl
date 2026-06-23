@@ -6,7 +6,28 @@ struct JamesHealthState
     float invulnerabilityTimer = 0.0f;
 };
 
+enum class GameOverCause
+{
+    James,
+    Angela
+};
+
 JamesHealthState jamesHealth;
+GameOverCause gameOverCause = GameOverCause::James;
+
+void triggerGameOver(GameOverCause cause)
+{
+    gameOverCause = cause;
+    playerIsMoving = false;
+    saveMenuOpen = false;
+    stopGameplayMusic();
+    currentState = GAME_OVER;
+}
+
+GameOverCause getGameOverCause()
+{
+    return gameOverCause;
+}
 
 void resetJamesHealth()
 {
@@ -25,8 +46,7 @@ bool damageJames()
     if (jamesHealth.health <= 0)
     {
         jamesHealth.health = 0;
-        playerIsMoving = false;
-        currentState = GAME_OVER;
+        triggerGameOver(GameOverCause::James);
     }
     return true;
 }
@@ -52,8 +72,14 @@ bool processHealthStateInput(GLFWwindow *window)
 {
     if (currentState != GAME_OVER)
         return false;
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS ||
-        glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+    {
+        resetJamesHealth();
+        resetAngelaHealth();
+        firstMouse = true;
+        spaceWasPressed = true;
+        eWasPressed = false;
+        currentState = MENU;
+    }
     return true;
 }

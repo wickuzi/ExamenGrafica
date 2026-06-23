@@ -19,6 +19,7 @@ void initAudio()
     audioCommand("close footsteps");
     audioCommand("close interaction");
     audioCommand("close jameshurt");
+    audioCommand("close angelacry");
     audioCommand("close interference");
     audioCommand("close shotgunfire");
     audioCommand("close pyramidhit");
@@ -35,6 +36,9 @@ void initAudio()
 
     if (audioCommand("open \"models\\james\\jamesounds\\jameshurt.wav\" type waveaudio alias jameshurt"))
         audioCommand("setaudio jameshurt volume to 1000");
+
+    if (audioCommand("open \"models\\angela\\sounds\\crying-sfx.mp3\" type mpegvideo alias angelacry"))
+        audioCommand("setaudio angelacry volume to 1000");
 
     if (audioCommand("open \"sounds\\6-interference.mp3\" type mpegvideo alias interference"))
         audioCommand("setaudio interference volume to 720");
@@ -74,6 +78,13 @@ void playJamesHurtSound()
     audioCommand("play jameshurt from 0");
 }
 
+void playAngelaCrySound()
+{
+    audioCommand("stop angelacry");
+    audioCommand("seek angelacry to start");
+    audioCommand("play angelacry from 0");
+}
+
 void playShotgunSound()
 {
     audioCommand("stop shotgunfire");
@@ -110,6 +121,16 @@ void setPyramidInterferenceActive(bool active)
     }
 }
 
+void stopGameplayMusic()
+{
+    audioCommand("stop bgm");
+    audioCommand("close bgm");
+    audioCommand("stop interference");
+    audioCommand("seek interference to start");
+    backgroundMusicPlaying = false;
+    pyramidInterferencePlaying = false;
+}
+
 void updateFootstepAudio(bool running)
 {
     if (playerIsMoving)
@@ -142,6 +163,7 @@ void shutdownAudio()
     audioCommand("stop interaction");
     audioCommand("stop bgm");
     audioCommand("stop jameshurt");
+    audioCommand("stop angelacry");
     audioCommand("stop interference");
     audioCommand("stop shotgunfire");
     audioCommand("stop pyramidhit");
@@ -149,6 +171,7 @@ void shutdownAudio()
     audioCommand("close interaction");
     audioCommand("close bgm");
     audioCommand("close jameshurt");
+    audioCommand("close angelacry");
     audioCommand("close interference");
     audioCommand("close shotgunfire");
     audioCommand("close pyramidhit");

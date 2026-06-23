@@ -24,6 +24,9 @@ target_sources(opengl PRIVATE
   "Resource Files/systems/navigation_system.inl"
   "Resource Files/systems/geometry_system.inl"
   "Resource Files/systems/model_animation_system.inl"
+  "Resource Files/systems/angela_system.inl"
+  "Resource Files/systems/status_hud.inl"
+  "Resource Files/systems/pause_menu.inl"
 )
 
 target_include_directories(opengl PRIVATE

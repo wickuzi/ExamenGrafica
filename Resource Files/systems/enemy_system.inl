@@ -6,6 +6,12 @@ enum class PyramidHeadMode
     Attacking
 };
 
+enum class PyramidHeadTarget
+{
+    James,
+    Angela
+};
+
 struct PyramidHeadEnemy
 {
     glm::vec3 position = glm::vec3(0.0f);
@@ -16,6 +22,9 @@ struct PyramidHeadEnemy
     float attackTimer = 0.0f;
     float attackDuration = 1.6f;
     bool dealtAttackDamage = false;
+    PyramidHeadTarget target = PyramidHeadTarget::James;
+    bool forcedJamesFocus = false;
+    float targetDecisionTimer = 0.0f;
     glm::vec3 patrolTarget = glm::vec3(0.0f);
     bool hasPatrolTarget = false;
     float stuckTimer = 0.0f;
@@ -40,6 +49,12 @@ struct PyramidHeadSystem
 };
 
 PyramidHeadSystem pyramidHeads;
+const int PYRAMID_HEAD_ENEMY_COUNT = 5;
+const float PYRAMID_HEAD_DETECTION_RADIUS = 14.0f;
+const float PYRAMID_HEAD_LOSE_RADIUS = 18.0f;
+const float PYRAMID_HEAD_ATTACK_RADIUS = 1.65f;
+const float PYRAMID_HEAD_CHASE_SPEED = 2.5f;
+const float PYRAMID_HEAD_PATROL_SPEED = 2.2f;
 
 glm::vec3 randomPatrolTarget(const glm::vec3 &origin)
 {
@@ -160,7 +175,7 @@ void initPyramidHeadSystem(const std::filesystem::path &resourceDir)
 
     pyramidHeads.randomGenerator.seed(static_cast<unsigned int>(GetTickCount64()));
     std::vector<glm::vec3> usedPositions;
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < PYRAMID_HEAD_ENEMY_COUNT; ++i)
     {
         PyramidHeadEnemy enemy;
         enemy.position = randomEnemySpawn(pyramidHeads.randomGenerator, usedPositions);
@@ -177,7 +192,7 @@ void initPyramidHeadSystem(const std::filesystem::path &resourceDir)
             : 1.6f;
         pyramidHeads.enemies.push_back(std::move(enemy));
     }
-    std::cout << "Spawned 3 Pyramid Head enemies." << std::endl;
+    std::cout << "Spawned " << PYRAMID_HEAD_ENEMY_COUNT << " Pyramid Head enemies." << std::endl;
 }
 
 void damagePyramidHeadFromShotgun()
@@ -207,6 +222,10 @@ void damagePyramidHeadFromShotgun()
         if (bestTarget)
         {
             playPyramidHeadHitSound();
+            bestTarget->target = PyramidHeadTarget::James;
+            bestTarget->forcedJamesFocus = true;
+            bestTarget->mode = PyramidHeadMode::Chasing;
+            bestTarget->animation.current = nullptr;
             --bestTarget->health;
             if (bestTarget->health <= 0)
             {
@@ -221,6 +240,58 @@ void damagePyramidHeadFromShotgun()
     }
 }
 
+glm::vec3 pyramidTargetPosition(const PyramidHeadEnemy &enemy)
+{
+    return enemy.target == PyramidHeadTarget::Angela ? getAngelaPosition() : playerPosition;
+}
+
+void updatePyramidTarget(PyramidHeadEnemy &enemy, float jamesDistance, float angelaDistance, float deltaSeconds)
+{
+    if (enemy.forcedJamesFocus)
+    {
+        enemy.target = PyramidHeadTarget::James;
+        if (jamesDistance > PYRAMID_HEAD_LOSE_RADIUS)
+            enemy.forcedJamesFocus = false;
+        return;
+    }
+
+    enemy.targetDecisionTimer = glm::max(0.0f, enemy.targetDecisionTimer - deltaSeconds);
+    if (!isAngelaFollowing())
+    {
+        enemy.target = PyramidHeadTarget::James;
+        return;
+    }
+
+    const bool angelaIsCloser = angelaDistance < jamesDistance;
+    const bool angelaIsReachable = angelaDistance <= PYRAMID_HEAD_DETECTION_RADIUS ||
+        (enemy.mode == PyramidHeadMode::Chasing && angelaDistance <= PYRAMID_HEAD_LOSE_RADIUS);
+    if (!angelaIsCloser || !angelaIsReachable)
+    {
+        enemy.target = PyramidHeadTarget::James;
+        enemy.targetDecisionTimer = 0.0f;
+        return;
+    }
+
+    if (enemy.targetDecisionTimer <= 0.0f)
+    {
+        std::uniform_int_distribution<int> focusChance(0, 99);
+        enemy.target = focusChance(pyramidHeads.randomGenerator) < 55
+            ? PyramidHeadTarget::Angela : PyramidHeadTarget::James;
+        enemy.targetDecisionTimer = 1.25f;
+    }
+}
+
+void damagePyramidTarget(PyramidHeadEnemy &enemy, float targetDistance)
+{
+    if (targetDistance > PYRAMID_HEAD_ATTACK_RADIUS + 0.45f)
+        return;
+
+    if (enemy.target == PyramidHeadTarget::Angela && isAngelaFollowing())
+        damageAngela();
+    else
+        damageJames();
+}
+
 void updatePyramidHeadSystem(float deltaSeconds)
 {
     if (!pyramidHeads.loaded || currentState != PLAYING)
@@ -228,11 +299,6 @@ void updatePyramidHeadSystem(float deltaSeconds)
 
     damagePyramidHeadFromShotgun();
     bool anyEnemyPursuing = false;
-    constexpr float detectionRadius = 14.0f;
-    constexpr float loseRadius = 18.0f;
-    constexpr float attackRadius = 1.65f;
-    constexpr float movementSpeed = 2.5f;
-    constexpr float patrolSpeed = 2.2f;
 
     for (PyramidHeadEnemy &enemy : pyramidHeads.enemies)
     {
@@ -240,38 +306,46 @@ void updatePyramidHeadSystem(float deltaSeconds)
             continue;
         glm::vec3 toJames = playerPosition - enemy.position;
         toJames.y = 0.0f;
-        const float distance = glm::length(toJames);
-        const glm::vec3 direction = distance > 0.001f ? toJames / distance : glm::vec3(0.0f, 0.0f, 1.0f);
+        const float jamesDistance = glm::length(toJames);
+        glm::vec3 toAngela = getAngelaPosition() - enemy.position;
+        toAngela.y = 0.0f;
+        const float angelaDistance = isAngelaFollowing() ? glm::length(toAngela) : FLT_MAX;
+        updatePyramidTarget(enemy, jamesDistance, angelaDistance, deltaSeconds);
+
+        glm::vec3 toTarget = pyramidTargetPosition(enemy) - enemy.position;
+        toTarget.y = 0.0f;
+        const float distance = glm::length(toTarget);
+        const glm::vec3 direction = distance > 0.001f ? toTarget / distance : glm::vec3(0.0f, 0.0f, 1.0f);
 
         if (enemy.mode == PyramidHeadMode::Attacking)
         {
             enemy.attackTimer += deltaSeconds;
             if (!enemy.dealtAttackDamage && enemy.attackTimer >= enemy.attackDuration * 0.52f)
             {
-                if (distance <= attackRadius + 0.45f)
-                    damageJames();
+                damagePyramidTarget(enemy, distance);
                 enemy.dealtAttackDamage = true;
             }
             if (enemy.attackTimer >= enemy.attackDuration)
             {
-                enemy.mode = distance <= attackRadius ? PyramidHeadMode::Attacking : PyramidHeadMode::Chasing;
+                enemy.mode = distance <= PYRAMID_HEAD_ATTACK_RADIUS ? PyramidHeadMode::Attacking : PyramidHeadMode::Chasing;
                 enemy.attackTimer = 0.0f;
                 enemy.dealtAttackDamage = false;
                 enemy.animation.current = nullptr;
             }
         }
-        else if (distance <= attackRadius)
+        else if (distance <= PYRAMID_HEAD_ATTACK_RADIUS)
         {
             enemy.mode = PyramidHeadMode::Attacking;
             enemy.attackTimer = 0.0f;
             enemy.dealtAttackDamage = false;
             enemy.animation.current = nullptr;
         }
-        else if (distance <= detectionRadius || (enemy.mode == PyramidHeadMode::Chasing && distance <= loseRadius))
+        else if (distance <= PYRAMID_HEAD_DETECTION_RADIUS ||
+                 (enemy.mode == PyramidHeadMode::Chasing && distance <= PYRAMID_HEAD_LOSE_RADIUS))
         {
             enemy.mode = PyramidHeadMode::Chasing;
             enemy.yaw = glm::degrees(atan2(direction.x, direction.z));
-            glm::vec3 nextPosition = enemy.position + direction * movementSpeed * deltaSeconds;
+            glm::vec3 nextPosition = enemy.position + direction * PYRAMID_HEAD_CHASE_SPEED * deltaSeconds;
             float groundY = enemy.position.y;
             if (findWalkAreaHeightAt(nextPosition.x, nextPosition.z, groundY) &&
                 !isBlockedByCollisionBoxes(nextPosition))
@@ -300,7 +374,7 @@ void updatePyramidHeadSystem(float deltaSeconds)
             {
                 const glm::vec3 patrolDirection = toPatrolTarget / patrolDistance;
                 enemy.yaw = glm::degrees(atan2(patrolDirection.x, patrolDirection.z));
-                glm::vec3 nextPosition = enemy.position + patrolDirection * patrolSpeed * deltaSeconds;
+                glm::vec3 nextPosition = enemy.position + patrolDirection * PYRAMID_HEAD_PATROL_SPEED * deltaSeconds;
                 float groundY = enemy.position.y;
                 if (findWalkAreaHeightAt(nextPosition.x, nextPosition.z, groundY) &&
                     !isBlockedByCollisionBoxes(nextPosition))
