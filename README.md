@@ -1,104 +1,111 @@
-# Paseo Virtual Silent Hill 2 con OpenGL
+# Silent Hill 2 OpenGL Project
 
-Guia para compilar y ejecutar el proyecto correctamente en una computadora Windows.
+Fast setup guide for building and running the project on Windows.
 
-## Requisitos
+## Quick Start
 
-- Windows 10 o Windows 11.
-- Driver de video actualizado con soporte para OpenGL 3.3 o superior.
-- Visual Studio Code, opcional pero recomendado.
-- MSYS2 instalado en `C:\msys64`.
-- Compilador MinGW 64-bit.
-- Librerias MinGW de GLFW y GLEW.
-
-El proyecto ya incluye las carpetas y archivos principales del motor:
-
-```text
-Resource Files/   codigo fuente y shaders
-models/           modelos 3D y texturas del mapa/personaje
-sounds/           musica y efectos de sonido
-skybox/           texturas del cielo
-glad/             loader de OpenGL
-glm/              libreria matematica
-SOIL2/            carga de imagenes
-assimp/           headers y libreria compilada de Assimp
-glfw3.dll
-glew32.dll
-build.ps1
-```
-
-No muevas ni borres esas carpetas. El ejecutable necesita que los recursos se copien junto a `opengl.exe`.
-
-## Instalar MSYS2 y Dependencias
-
-1. Instala MSYS2 desde:
-
-```text
-https://www.msys2.org/
-```
-
-2. Abre la terminal:
-
-```text
-MSYS2 MinGW x64
-```
-
-3. Instala el compilador y librerias necesarias:
-
-```bash
-pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-gdb mingw-w64-x86_64-glfw mingw-w64-x86_64-glew
-```
-
-4. Verifica que exista el compilador:
-
-```text
-C:\msys64\mingw64\bin\g++.exe
-```
-
-Si esa ruta existe, el script `build.ps1` lo detecta automaticamente.
-
-## Abrir el Proyecto
-
-Abre la carpeta completa del proyecto, no solo `Resource Files`.
-
-La raiz debe verse parecido a esto:
-
-```text
-aliasing/
-|-- Resource Files/
-|-- models/
-|-- sounds/
-|-- skybox/
-|-- glad/
-|-- glm/
-|-- SOIL2/
-|-- assimp/
-|-- build.ps1
-|-- CMakeLists.txt
-`-- README.md
-```
-
-## Compilar
-
-Desde PowerShell, entra a la carpeta raiz del proyecto:
+Open PowerShell in the project root and run:
 
 ```powershell
-cd C:\ruta\al\proyecto\aliasing
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Compila sin ejecutar:
-
-```powershell
-C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
-```
-
-Si todo sale bien, el ejecutable queda en:
+This command builds the game, copies the required assets and DLLs into `build/bin`, and launches:
 
 ```text
 build/bin/opengl.exe
 ```
 
-Durante la compilacion el script copia automaticamente:
+To build without launching:
+
+```powershell
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
+```
+
+If the game was already built, run it from:
+
+```powershell
+cd .\build\bin
+.\opengl.exe
+```
+
+Run the executable from `build/bin`, because the game loads shaders, models, sounds, videos, and skybox textures through relative paths.
+
+## Requirements
+
+- Windows 10 or Windows 11.
+- GPU/driver with OpenGL 3.3 support.
+- MSYS2 installed at `C:\msys64`.
+- MinGW 64-bit `g++.exe`.
+- MinGW GLFW and GLEW packages.
+
+Install the required MSYS2 packages from the `MSYS2 MinGW x64` terminal:
+
+```bash
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-gdb mingw-w64-x86_64-glfw mingw-w64-x86_64-glew
+```
+
+The build script automatically looks for:
+
+```text
+C:\msys64\mingw64\bin\g++.exe
+```
+
+## Project Structure
+
+```text
+.
+|-- Resource Files/
+|   |-- opengl.cpp                  Main OpenGL entry point
+|   |-- systems/                    Gameplay/UI/audio modules
+|   |   |-- angela_system.inl
+|   |   |-- audio_system.inl
+|   |   |-- damage_overlay.inl
+|   |   |-- enemy_system.inl
+|   |   |-- flashlight_system.inl
+|   |   |-- health_system.inl
+|   |   |-- model_animation_system.inl
+|   |   |-- navigation_system.inl
+|   |   |-- objectives_hud.inl
+|   |   |-- objective_overlay.inl
+|   |   |-- pause_menu.inl
+|   |   |-- shooting_system.inl
+|   |   |-- status_hud.inl
+|   |   `-- texture_system.inl
+|   |-- *.vs / *.fs                 GLSL shaders
+|   |-- shwallpaper.jpeg            Menu wallpaper
+|   `-- video_sh.wmv                Intro cinematic
+|-- models/
+|   |-- town_visual.glb             Main map
+|   |-- james/                      James model, sounds, weapons
+|   |-- jamesanimations/            James animation clips
+|   |-- angela/                     Angela model, animations, sounds, video
+|   `-- enemies/                    Pyramid Head and other enemy assets
+|-- sounds/                         Music and shared sound effects
+|-- skybox/                         Skybox textures
+|-- glad/                           OpenGL loader
+|-- glm/                            Math library
+|-- SOIL2/                          Image loading helpers
+|-- assimp/                         Assimp headers/build outputs
+|-- .vscode/                        Optional VS Code tasks
+|-- build.ps1                       Recommended Windows build script
+|-- build.sh                        Shell build helper
+|-- CMakeLists.txt                  CMake project file
+|-- package.ps1                     Packaging helper
+`-- README.md
+```
+
+## What `build.ps1` Does
+
+The script:
+
+1. Finds `g++.exe`.
+2. Compiles `glad/src/glad.c`.
+3. Compiles `Resource Files/opengl.cpp`.
+4. Links `build/bin/opengl.exe`.
+5. Copies runtime DLLs and assets into `build/bin`.
+
+Copied runtime content includes:
 
 ```text
 build/bin/Resource Files/
@@ -113,99 +120,76 @@ build/bin/libgcc_s_seh-1.dll
 build/bin/libwinpthread-1.dll
 ```
 
-## Ejecutar
+## VS Code
 
-Opcion recomendada:
+Open the full project folder in VS Code.
 
-```powershell
-C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1
-```
-
-Eso compila y luego abre el programa.
-
-Tambien puedes ejecutarlo manualmente:
-
-```powershell
-cd .\build\bin
-.\opengl.exe
-```
-
-Importante: ejecuta `opengl.exe` desde `build/bin`, porque el programa carga shaders, modelos, sonidos y skybox usando rutas relativas.
-
-## Convencion del mapa de ciudad
-
-El mapa principal es `models/town_visual.glb`. El motor usa directamente sus materiales e imagenes embebidas y reconoce estos nodos de Blender:
-
-- `spawn_player`: posicion inicial y orientacion de James.
-- `savepoint_01`: posicion exacta del cubo rojo interactivo de guardado.
-- `walkarea_01` a `walkarea_012`: las 12 superficies de navegacion; nunca se dibujan durante el juego.
-
-Conserva esos nombres al volver a exportar el GLB. El arranque valida que existan las 12 areas y muestra una advertencia en consola si falta alguna.
-
-## Compilar Desde VS Code
-
-1. Abre la carpeta completa del proyecto en VS Code.
-2. Presiona:
+Build:
 
 ```text
 Ctrl+Shift+B
 ```
 
-3. Selecciona la tarea:
-
-```text
-Build OpenGL
-```
-
-Para ejecutar desde VS Code, usa:
+Run:
 
 ```text
 Terminal > Run Task... > Run OpenGL
 ```
 
-## Problemas Comunes
+## Map Export Notes
 
-### PowerShell bloquea el script
+The main map is:
 
-Usa siempre este comando:
-
-```powershell
-C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
+```text
+models/town_visual.glb
 ```
 
-### No se encuentra `g++.exe`
+The engine reads these authored nodes from the map:
 
-Instala MSYS2 y confirma que exista:
+- `spawn_player`: James spawn position and direction.
+- `angelainitialpos`: Angela's starting position.
+- `shotgunpos`: shotgun pickup position.
+- `savepoint*`: save point markers.
+- `walkarea*`: navigation surfaces.
+- `lightpos*`: horror light positions.
+
+Keep those names when exporting the GLB again.
+
+## Troubleshooting
+
+### PowerShell blocks the script
+
+Use the full bypass command:
+
+```powershell
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+### `g++.exe` was not found
+
+Install MSYS2 and confirm this file exists:
 
 ```text
 C:\msys64\mingw64\bin\g++.exe
 ```
 
-### Error `cannot find -lglfw3` o `cannot find -lglew32`
+### Missing `-lglfw3` or `-lglew32`
 
-Instala GLFW y GLEW desde la terminal `MSYS2 MinGW x64`:
+Install GLFW and GLEW:
 
 ```bash
 pacman -S --needed mingw-w64-x86_64-glfw mingw-w64-x86_64-glew
 ```
 
-### Falta `libassimp-6.dll`
+### The game opens but assets are missing
 
-Verifica que exista:
+Rebuild with:
 
-```text
-assimp/build-mingw/bin/libassimp-6.dll
+```powershell
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
 ```
 
-El script la copia a:
-
-```text
-build/bin/libassimp-6.dll
-```
-
-### El juego abre pero no carga modelos, sonidos o skybox
-
-Revisa que existan estas carpetas:
+Then confirm these folders exist:
 
 ```text
 build/bin/Resource Files
@@ -214,19 +198,11 @@ build/bin/sounds
 build/bin/skybox
 ```
 
-Si falta alguna, vuelve a compilar con:
+### The game does not start
 
-```powershell
-C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\build.ps1 -NoRun
-```
-
-### El programa no abre
-
-Ejecutalo desde consola para ver el error:
+Run from a terminal to see the error:
 
 ```powershell
 cd .\build\bin
 .\opengl.exe
 ```
-
-Tambien revisa que tu GPU soporte OpenGL 3.3 o superior.
