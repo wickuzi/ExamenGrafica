@@ -73,7 +73,9 @@ void renderStatusHud(Shader &lightingShader, DrawHudQuad &&drawHudQuad)
 
     const float panelX = 18.0f;
     const float panelY = 16.0f;
-    drawHudQuad(getWhiteTexture(), panelX, panelY, 164.0f, 154.0f, glm::vec3(0.020f, 0.012f, 0.012f), 0.68f);
+    const bool showAngelaStatus = isAngelaFollowing();
+    const float panelHeight = showAngelaStatus ? 154.0f : 100.0f;
+    drawHudQuad(getWhiteTexture(), panelX, panelY, 164.0f, panelHeight, glm::vec3(0.020f, 0.012f, 0.012f), 0.68f);
     drawHudQuad(getWhiteTexture(), panelX, panelY, 164.0f, 2.0f, glm::vec3(0.62f, 0.06f, 0.045f), 0.55f);
 
     drawHudQuad(statusHud.jamesLabel.texture, panelX + 12.0f, panelY + 10.0f,
@@ -82,10 +84,13 @@ void renderStatusHud(Shader &lightingShader, DrawHudQuad &&drawHudQuad)
                        jamesHealth.health, JamesHealthState::MaxHealth, glm::vec3(0.82f, 0.08f, 0.055f));
     renderRecoveryProgress(drawHudQuad, panelX + 16.0f, panelY + 83.0f);
 
-    drawHudQuad(statusHud.angelaLabel.texture, panelX + 12.0f, panelY + 100.0f,
-                static_cast<float>(statusHud.angelaLabel.width), static_cast<float>(statusHud.angelaLabel.height), glm::vec3(1.0f), isAngelaAlive() ? 1.0f : 0.45f);
-    renderHealthBlocks(drawHudQuad, panelX + 16.0f, panelY + 129.0f,
-                       getAngelaHealth(), getAngelaMaxHealth(), glm::vec3(0.68f, 0.18f, 0.16f));
+    if (showAngelaStatus)
+    {
+        drawHudQuad(statusHud.angelaLabel.texture, panelX + 12.0f, panelY + 100.0f,
+                    static_cast<float>(statusHud.angelaLabel.width), static_cast<float>(statusHud.angelaLabel.height), glm::vec3(1.0f), isAngelaAlive() ? 1.0f : 0.45f);
+        renderHealthBlocks(drawHudQuad, panelX + 16.0f, panelY + 129.0f,
+                           getAngelaHealth(), getAngelaMaxHealth(), glm::vec3(0.68f, 0.18f, 0.16f));
+    }
 
     glEnable(GL_DEPTH_TEST);
 }
