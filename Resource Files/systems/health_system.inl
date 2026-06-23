@@ -20,7 +20,7 @@ void triggerGameOver(GameOverCause cause)
     gameOverCause = cause;
     playerIsMoving = false;
     saveMenuOpen = false;
-    stopGameplayMusic();
+    stopGameplayAudio();
     currentState = GAME_OVER;
 }
 
@@ -76,6 +76,7 @@ bool processHealthStateInput(GLFWwindow *window)
     {
         resetJamesHealth();
         resetAngelaHealth();
+        stopGameplayAudio();
         firstMouse = true;
         spaceWasPressed = true;
         eWasPressed = false;

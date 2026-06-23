@@ -131,6 +131,25 @@ void stopGameplayMusic()
     pyramidInterferencePlaying = false;
 }
 
+void stopGameplayAudio()
+{
+    audioCommand("stop footsteps");
+    audioCommand("seek footsteps to start");
+    audioCommand("stop interaction");
+    audioCommand("seek interaction to start");
+    audioCommand("stop jameshurt");
+    audioCommand("seek jameshurt to start");
+    audioCommand("stop angelacry");
+    audioCommand("seek angelacry to start");
+    audioCommand("stop shotgunfire");
+    audioCommand("seek shotgunfire to start");
+    audioCommand("stop pyramidhit");
+    audioCommand("seek pyramidhit to start");
+    stopGameplayMusic();
+    footstepsPlaying = false;
+    footstepTimer = 0.0f;
+}
+
 void updateFootstepAudio(bool running)
 {
     if (playerIsMoving)

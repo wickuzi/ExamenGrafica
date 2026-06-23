@@ -83,6 +83,7 @@ void playShotgunSound();
 void playPyramidHeadHitSound();
 void setPyramidInterferenceActive(bool active);
 void stopGameplayMusic();
+void stopGameplayAudio();
 void updateFootstepAudio(bool running);
 void shutdownAudio();
 void closeCinematicPlayer();
@@ -595,6 +596,9 @@ GameState currentState = MENU;
 
 void enterPlayingState()
 {
+    stopGameplayAudio();
+    resetJamesHealth();
+    resetAngelaHealth();
     currentState = PLAYING;
     playerPosition = initialPlayerSpawn;
     playerYaw = initialPlayerYaw;
@@ -750,6 +754,9 @@ void processMenuSelection(int index)
     const std::string &selectedId = menuItems[index].text;
     if (selectedId == "newgame")
     {
+        stopGameplayAudio();
+        resetJamesHealth();
+        resetAngelaHealth();
         playInteractionSound();
         glfwHWND = GetActiveWindow();
         if (playCinematicVideo(CINEMATIC_VIDEO_PATH, glfwHWND))
