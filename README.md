@@ -141,7 +141,7 @@ If GLFW or GLEW are missing, install them:
 pacman -S --needed mingw-w64-x86_64-glfw mingw-w64-x86_64-glew
 ```
 
-## Espanol
+## Español
 
 Guia rapida para compilar y ejecutar el proyecto en Windows.
 
