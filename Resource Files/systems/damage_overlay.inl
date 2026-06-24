@@ -43,7 +43,7 @@ void initDamageOverlay()
         L"JAMES HA MUERTO", L"Georgia", 52.0f, 620, 82,
         Gdiplus::Color(245, 205, 25, 22));
     damageOverlay.angelaDeathTitle = createTextTexture(
-        L"ANGELA HA MUERTO", L"Georgia", 52.0f, 660, 82,
+        L"MARY HA MUERTO", L"Georgia", 52.0f, 660, 82,
         Gdiplus::Color(245, 205, 25, 22));
     damageOverlay.deathPrompt = createTextTexture(
         L"PRESIONA ESPACIO PARA VOLVER AL MENU PRINCIPAL", L"Georgia", 20.0f, 680, 42,

@@ -5,7 +5,9 @@ struct AngelaSystemState
     std::string cinematicPath;
     bool hasNode = false;
     glm::vec3 position = glm::vec3(0.0f);
+    glm::vec3 initialPosition = glm::vec3(0.0f);
     float yaw = 0.0f;
+    float initialYaw = 0.0f;
 
     glm::vec3 aabbMin = glm::vec3(FLT_MAX);
     glm::vec3 aabbMax = glm::vec3(-FLT_MAX);
@@ -81,6 +83,19 @@ void resetAngelaHealth()
     angelaSystem.hitRecoveryTimer = 0.0f;
 }
 
+void resetAngelaProgress()
+{
+    resetAngelaHealth();
+    angelaSystem.cinematicPlaying = false;
+    angelaSystem.conversationStage = 0;
+    angelaSystem.position = angelaSystem.initialPosition;
+    angelaSystem.yaw = angelaSystem.initialYaw;
+    angelaSystem.shouldRun = false;
+    angelaSystem.shouldWalk = false;
+    angelaSystem.animState.current = angelaSystem.idleClip.valid ? &angelaSystem.idleClip : nullptr;
+    angelaSystem.animState.currentTime = 0.0f;
+}
+
 int getAngelaHealth()
 {
     return angelaSystem.health;
@@ -108,8 +123,8 @@ void initAngelaHudTextures()
     angelaSystem.interactText = createTextTexture(L"PRESS E TO INTERACT", L"Georgia", 18.0f, 245, 34,
                                                   Gdiplus::Color(245, 230, 220, 218));
     angelaSystem.dialogueAngelaText = createTextTexture(
-        L"ANGELA: YO TAMBIEN ESTOY PERDIDA, HE VISTO A CRIATURAS EXTRANAS POR ESTOS LADOS, NO SE SI SEA SEGURO.   [ESPACIO]",
-        L"Georgia", 20.0f, 1030, 72, Gdiplus::Color(245, 230, 220, 230));
+        L"MARY: YO TAMBIEN ESTOY PERDIDA, HE VISTO A CRIATURAS EXTRANAS POR ESTOS LADOS, NO SE SI SEA SEGURO.   [ESPACIO]",
+        L"Georgia", 20.0f, 1010, 72, Gdiplus::Color(245, 230, 220, 230));
     angelaSystem.dialogueJamesText = createTextTexture(
         L"JAMES: ESTA BIEN, SIGUEME Y SALDREMOS DE ACA.   [ESPACIO]",
         L"Georgia", 20.0f, 760, 54, Gdiplus::Color(245, 230, 220, 230));
@@ -181,6 +196,8 @@ void setAngelaInitialTransform(bool hasNode, const glm::mat4 &mapModelTransform,
     std::cout << "Angela initial position: (" << angelaSystem.position.x << ", "
               << angelaSystem.position.y << ", " << angelaSystem.position.z
               << ") yaw=" << angelaSystem.yaw << std::endl;
+    angelaSystem.initialPosition = angelaSystem.position;
+    angelaSystem.initialYaw = angelaSystem.yaw;
 }
 
 void finishAngelaCinematic()
@@ -395,7 +412,11 @@ bool processAngelaDialogueInput(bool dialogueSpacePressed, bool ePressed)
         return false;
 
     if (dialogueSpacePressed && !spaceWasPressed)
+    {
         ++angelaSystem.conversationStage;
+        if (angelaSystem.conversationStage >= 3)
+            checkObjectiveVictory();
+    }
     spaceWasPressed = dialogueSpacePressed;
     eWasPressed = ePressed;
     return true;

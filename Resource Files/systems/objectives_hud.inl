@@ -11,10 +11,13 @@ struct ObjectivesHud
     HudTexture angela;
     HudTexture shotgun;
     HudTexture enemies;
+    HudTexture enemyCount;
     HudTexture check;
     bool angelaComplete = false;
     bool shotgunComplete = false;
     bool enemiesComplete = false;
+    int displayedEnemiesAlive = -1;
+    int displayedEnemiesTotal = -1;
 };
 
 ObjectivesHud objectivesHud;
@@ -25,17 +28,56 @@ void initObjectivesHud()
         L"OBJETIVOS", L"Georgia", 17.0f, 135, 27,
         Gdiplus::Color(235, 225, 215, 220));
     objectivesHud.angela = createTextTexture(
-        L"Encuentra a Angela", L"Georgia", 14.0f, 205, 25,
+        L"Encuentra a Mary", L"Georgia", 14.0f, 205, 25,
         Gdiplus::Color(225, 215, 208, 215));
     objectivesHud.shotgun = createTextTexture(
         L"Encuentra la escopeta", L"Georgia", 14.0f, 205, 25,
         Gdiplus::Color(225, 215, 208, 215));
     objectivesHud.enemies = createTextTexture(
-        L"Elimina a todos los enemigos", L"Georgia", 14.0f, 235, 25,
+        L"Elimina enemigos", L"Georgia", 14.0f, 185, 25,
         Gdiplus::Color(225, 215, 208, 215));
     objectivesHud.check = createTextTexture(
         L"\u2713", L"Segoe UI Symbol", 18.0f, 25, 25,
         Gdiplus::Color(255, 72, 210, 92));
+}
+
+void resetObjectivesHud()
+{
+    objectivesHud.angelaComplete = false;
+    objectivesHud.shotgunComplete = false;
+    objectivesHud.enemiesComplete = false;
+    objectivesHud.displayedEnemiesAlive = -1;
+    objectivesHud.displayedEnemiesTotal = -1;
+}
+
+void updateObjectivesEnemyCounter()
+{
+    const int alive = getAlivePyramidHeadCount();
+    const int total = getTotalPyramidHeadCount();
+    if (alive == objectivesHud.displayedEnemiesAlive && total == objectivesHud.displayedEnemiesTotal)
+        return;
+
+    if (objectivesHud.enemyCount.texture)
+        glDeleteTextures(1, &objectivesHud.enemyCount.texture);
+
+    const std::wstring label = std::to_wstring(alive) + L"/" + std::to_wstring(total);
+    objectivesHud.enemyCount = createStyledTextTexture(
+        label.c_str(), L"Georgia", 15.0f, 58, 26,
+        Gdiplus::Color(245, 225, 205, 230), Gdiplus::Color(45, 0, 0, 220), true,
+        Gdiplus::Color(0, 0, 0, 135));
+    objectivesHud.displayedEnemiesAlive = alive;
+    objectivesHud.displayedEnemiesTotal = total;
+}
+
+bool areAllObjectivesComplete()
+{
+    return objectivesHud.angelaComplete && objectivesHud.shotgunComplete && objectivesHud.enemiesComplete;
+}
+
+void checkObjectiveVictory()
+{
+    if (areAllObjectivesComplete())
+        triggerVictoryEnding();
 }
 
 void completeObjective(ObjectiveId objective)
@@ -52,6 +94,9 @@ void completeObjective(ObjectiveId objective)
         objectivesHud.enemiesComplete = true;
         break;
     }
+
+    if (objective != ObjectiveId::FindAngela)
+        checkObjectiveVictory();
 }
 
 // Enemy gameplay can call this after removing the final living enemy.
@@ -81,7 +126,9 @@ void renderObjectivesHud(Shader &lightingShader, DrawHudQuad &&drawHudQuad)
     lightingShader.setFloat("objectAlpha", 1.0f);
     lightingShader.setFloat("alphaCutoff", 0.01f);
 
-    const float panelWidth = 300.0f;
+    updateObjectivesEnemyCounter();
+
+    const float panelWidth = 322.0f;
     const float panelHeight = 132.0f;
     const float panelX = static_cast<float>(SCR_WIDTH) - panelWidth - 18.0f;
     const float panelY = 16.0f;
@@ -103,6 +150,8 @@ void renderObjectivesHud(Shader &lightingShader, DrawHudQuad &&drawHudQuad)
                 static_cast<float>(objectivesHud.shotgun.width), static_cast<float>(objectivesHud.shotgun.height), glm::vec3(1.0f), 1.0f);
     drawHudQuad(objectivesHud.enemies.texture, textX, row3,
                 static_cast<float>(objectivesHud.enemies.width), static_cast<float>(objectivesHud.enemies.height), glm::vec3(1.0f), 1.0f);
+    drawHudQuad(objectivesHud.enemyCount.texture, panelX + panelWidth - objectivesHud.enemyCount.width - 17.0f, row3 - 1.0f,
+                static_cast<float>(objectivesHud.enemyCount.width), static_cast<float>(objectivesHud.enemyCount.height), glm::vec3(1.0f), 1.0f);
 
     const float checkX = panelX + 13.0f;
     if (objectivesHud.angelaComplete)

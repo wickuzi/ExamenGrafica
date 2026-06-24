@@ -88,6 +88,14 @@ void updateFootstepAudio(bool running);
 void shutdownAudio();
 void closeCinematicPlayer();
 void showObjectiveBriefing();
+void resetGameplayProgress();
+void triggerVictoryEnding();
+void initEndingScreen(const std::filesystem::path &resourceDir);
+int getAlivePyramidHeadCount();
+int getTotalPyramidHeadCount();
+void resetPyramidHeadProgress();
+void resetObjectivesHud();
+void resetAngelaProgress();
 bool audioCommand(const std::string &command, bool logFailures = true);
 unsigned int loadTextureFromJpeg(const wchar_t *path);
 struct HudTexture;
@@ -582,7 +590,8 @@ enum GameState
     OBJECTIVE_BRIEFING,
     PLAYING,
     GAME_OVER,
-    PAUSED
+    PAUSED,
+    ENDING
 };
 
 // Variables globales para el video (reemplaza las anteriores)
@@ -754,9 +763,7 @@ void processMenuSelection(int index)
     const std::string &selectedId = menuItems[index].text;
     if (selectedId == "newgame")
     {
-        stopGameplayAudio();
-        resetJamesHealth();
-        resetAngelaHealth();
+        resetGameplayProgress();
         playInteractionSound();
         glfwHWND = GetActiveWindow();
         if (playCinematicVideo(CINEMATIC_VIDEO_PATH, glfwHWND))
@@ -853,6 +860,21 @@ void updateMenu(GLFWwindow *window, float deltaTime)
 #include "systems/status_hud.inl"
 #include "systems/enemy_system.inl"
 #include "systems/pause_menu.inl"
+
+void resetGameplayProgress()
+{
+    stopGameplayAudio();
+    saveMenuOpen = false;
+    shotgunCollected = false;
+    playerIsMoving = false;
+    jumpRequested = false;
+    spaceWasPressed = false;
+    eWasPressed = false;
+    resetJamesHealth();
+    resetAngelaProgress();
+    resetObjectivesHud();
+    resetPyramidHeadProgress();
+}
 
 int main()
 {
@@ -1076,6 +1098,7 @@ int main()
     initDamageOverlay();
     initPauseMenu();
     initStatusHud();
+    initEndingScreen(resourceDir);
 
     // create title and menu textures by ropchard
     titleText =
@@ -1664,6 +1687,10 @@ int main()
         else if (currentState == GAME_OVER)
         {
             renderGameOverScreen(lightingShader, drawHudQuad);
+        }
+        else if (currentState == ENDING)
+        {
+            renderEndingScreen(lightingShader, drawHudQuad);
         }
         else if (currentState == PAUSED)
         {

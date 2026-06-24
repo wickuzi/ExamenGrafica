@@ -11,7 +11,7 @@ void initStatusHud()
 {
     statusHud.jamesLabel = createTextTexture(L"JAMES", L"Georgia", 18.0f, 108, 28,
                                              Gdiplus::Color(235, 226, 214, 230));
-    statusHud.angelaLabel = createTextTexture(L"ANGELA", L"Georgia", 18.0f, 126, 28,
+    statusHud.angelaLabel = createTextTexture(L"MARY", L"Georgia", 18.0f, 126, 28,
                                               Gdiplus::Color(235, 226, 214, 230));
     statusHud.recoverLabel = createTextTexture(L"AUTO RECUP.", L"Georgia", 13.0f, 116, 22,
                                                Gdiplus::Color(190, 205, 196, 205));

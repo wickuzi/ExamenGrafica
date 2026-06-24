@@ -80,6 +80,7 @@ add_custom_command(TARGET opengl POST_BUILD
   "${CMAKE_CURRENT_SOURCE_DIR}/Resource Files/skybox.fs"
   "${CMAKE_CURRENT_SOURCE_DIR}/Resource Files/video_sh.wmv"
   "${CMAKE_CURRENT_SOURCE_DIR}/Resource Files/shwallpaper.jpeg"
+  "${CMAKE_CURRENT_SOURCE_DIR}/Resource Files/ending_screen.png"
   "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Resource Files"
 )
 add_custom_command(TARGET opengl POST_BUILD

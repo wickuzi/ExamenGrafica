@@ -16,7 +16,7 @@ void initObjectiveOverlay()
     objectiveOverlay.body = createTextTexture(
         L"ESTAS EN SILENT HILL. TU OBJETIVO ES ENCONTRAR UNA SALIDA.\n\n"
         L"EXPLORA EL MAPA Y BUSCA LA ESCOPETA PARA DEFENDERTE.\n"
-        L"ENCUENTRA Y RESCATA A ANGELA.\n\n"
+        L"ENCUENTRA Y RESCATA A MARY.\n\n"
         L"TEN CUIDADO: HAY CRIATURAS ACECHANDO ENTRE LA NIEBLA.",
         L"Georgia", 25.0f, 900, 230, Gdiplus::Color(235, 218, 214, 205));
     objectiveOverlay.prompt = createTextTexture(

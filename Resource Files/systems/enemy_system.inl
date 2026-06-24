@@ -49,12 +49,28 @@ struct PyramidHeadSystem
 };
 
 PyramidHeadSystem pyramidHeads;
-const int PYRAMID_HEAD_ENEMY_COUNT = 5;
+const int PYRAMID_HEAD_ENEMY_COUNT = 1;
 const float PYRAMID_HEAD_DETECTION_RADIUS = 14.0f;
 const float PYRAMID_HEAD_LOSE_RADIUS = 18.0f;
 const float PYRAMID_HEAD_ATTACK_RADIUS = 1.65f;
 const float PYRAMID_HEAD_CHASE_SPEED = 2.5f;
 const float PYRAMID_HEAD_PATROL_SPEED = 2.2f;
+
+int getAlivePyramidHeadCount()
+{
+    int count = 0;
+    for (const PyramidHeadEnemy &enemy : pyramidHeads.enemies)
+    {
+        if (enemy.alive)
+            ++count;
+    }
+    return count;
+}
+
+int getTotalPyramidHeadCount()
+{
+    return PYRAMID_HEAD_ENEMY_COUNT;
+}
 
 glm::vec3 randomPatrolTarget(const glm::vec3 &origin)
 {
@@ -116,6 +132,39 @@ glm::vec3 randomEnemySpawn(std::mt19937 &generator, const std::vector<glm::vec3>
                      (fallback.a.z + fallback.b.z + fallback.c.z) / 3.0f);
 }
 
+void spawnPyramidHeadEnemies()
+{
+    pyramidHeads.enemies.clear();
+    std::vector<glm::vec3> usedPositions;
+    for (int i = 0; i < PYRAMID_HEAD_ENEMY_COUNT; ++i)
+    {
+        PyramidHeadEnemy enemy;
+        enemy.position = randomEnemySpawn(pyramidHeads.randomGenerator, usedPositions);
+        usedPositions.push_back(enemy.position);
+        enemy.previousPosition = enemy.position;
+        enemy.patrolTarget = randomPatrolTarget(enemy.position);
+        enemy.hasPatrolTarget = true;
+        enemy.mode = PyramidHeadMode::Patrolling;
+        enemy.animation.finalMatrices.assign(MAX_BONES, glm::mat4(1.0f));
+        enemy.animation.current = findClip(pyramidHeads.clips, "idle");
+        const AnimationClip *attack = findClip(pyramidHeads.clips, "attack");
+        enemy.attackDuration = attack
+            ? glm::clamp(attack->duration / glm::max(attack->ticksPerSecond, 1.0f), 1.15f, 2.6f)
+            : 1.6f;
+        pyramidHeads.enemies.push_back(std::move(enemy));
+    }
+}
+
+void resetPyramidHeadProgress()
+{
+    if (!pyramidHeads.loaded)
+        return;
+
+    spawnPyramidHeadEnemies();
+    pyramidHeads.fireWasPressed = false;
+    setPyramidInterferenceActive(false);
+}
+
 void initPyramidHeadSystem(const std::filesystem::path &resourceDir)
 {
     std::filesystem::path enemyDir = resourceDir.parent_path() / "models" / "enemies" / "pyramidhead";
@@ -174,24 +223,7 @@ void initPyramidHeadSystem(const std::filesystem::path &resourceDir)
     }
 
     pyramidHeads.randomGenerator.seed(static_cast<unsigned int>(GetTickCount64()));
-    std::vector<glm::vec3> usedPositions;
-    for (int i = 0; i < PYRAMID_HEAD_ENEMY_COUNT; ++i)
-    {
-        PyramidHeadEnemy enemy;
-        enemy.position = randomEnemySpawn(pyramidHeads.randomGenerator, usedPositions);
-        usedPositions.push_back(enemy.position);
-        enemy.previousPosition = enemy.position;
-        enemy.patrolTarget = randomPatrolTarget(enemy.position);
-        enemy.hasPatrolTarget = true;
-        enemy.mode = PyramidHeadMode::Patrolling;
-        enemy.animation.finalMatrices.assign(MAX_BONES, glm::mat4(1.0f));
-        enemy.animation.current = findClip(pyramidHeads.clips, "idle");
-        const AnimationClip *attack = findClip(pyramidHeads.clips, "attack");
-        enemy.attackDuration = attack
-            ? glm::clamp(attack->duration / glm::max(attack->ticksPerSecond, 1.0f), 1.15f, 2.6f)
-            : 1.6f;
-        pyramidHeads.enemies.push_back(std::move(enemy));
-    }
+    spawnPyramidHeadEnemies();
     std::cout << "Spawned " << PYRAMID_HEAD_ENEMY_COUNT << " Pyramid Head enemies." << std::endl;
 }
 

@@ -98,7 +98,7 @@ foreach ($runtimeDll in @('libstdc++-6.dll', 'libgcc_s_seh-1.dll', 'libwinpthrea
 
 New-Item -ItemType Directory -Force -Path 'build/bin/Resource Files' | Out-Null
 Copy-Item 'Resource Files/*.vs', 'Resource Files/*.fs' 'build/bin/Resource Files/' -Force
-foreach ($resourceFile in @('Resource Files/video_sh.wmv', 'Resource Files/shwallpaper.jpeg')) {
+foreach ($resourceFile in @('Resource Files/video_sh.wmv', 'Resource Files/shwallpaper.jpeg', 'Resource Files/ending_screen.png')) {
     if (Test-Path $resourceFile) {
         Copy-Item $resourceFile 'build/bin/Resource Files/' -Force
     }
