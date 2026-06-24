@@ -4,6 +4,8 @@
 
 Fast setup guide for building and running the project on Windows.
 
+Link for the video: https://youtu.be/WLUuhOmeuM0
+
 ### Run The Project
 
 Open PowerShell in the project root and run this command:
