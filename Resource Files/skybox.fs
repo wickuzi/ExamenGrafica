@@ -56,13 +56,13 @@ void main()
     vec3 source = texture(skybox, TexCoords).rgb;
     float gray = dot(source, vec3(0.299, 0.587, 0.114));
     vec3 sourceGraded = mix(vec3(gray), source, 0.22);
-    vec3 fogDark = vec3(0.09, 0.12, 0.105);
-    vec3 fogLight = vec3(0.23, 0.26, 0.235);
+    vec3 fogDark = vec3(0.05, 0.06, 0.055);
+    vec3 fogLight = vec3(0.16, 0.18, 0.165);
     vec3 fogLayer = mix(fogDark, fogLight, smoothstep(0.22, 0.82, clouds));
-    vec3 color = mix(sourceGraded, fogLayer, 0.82);
+    vec3 color = mix(sourceGraded, fogLayer, 0.88);
 
     vec2 screenUv = gl_FragCoord.xy / vec2(1280.0, 720.0);
     float edge = smoothstep(0.30, 0.76, length((screenUv - 0.5) * vec2(1.0, 0.82)));
-    color *= mix(0.84, 0.34, edge);
+    color *= mix(0.80, 0.28, edge);
     FragColor = vec4(color, 1.0);
 }

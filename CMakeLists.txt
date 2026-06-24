@@ -20,12 +20,19 @@ add_executable(opengl "Resource Files/opengl.cpp")
 # unit or introducing global-state initialization order changes.
 target_sources(opengl PRIVATE
   "Resource Files/systems/audio_system.inl"
+  "Resource Files/systems/damage_overlay.inl"
+  "Resource Files/systems/enemy_system.inl"
+  "Resource Files/systems/flashlight_system.inl"
   "Resource Files/systems/texture_system.inl"
   "Resource Files/systems/navigation_system.inl"
   "Resource Files/systems/geometry_system.inl"
   "Resource Files/systems/model_animation_system.inl"
   "Resource Files/systems/angela_system.inl"
+  "Resource Files/systems/health_system.inl"
+  "Resource Files/systems/objective_overlay.inl"
+  "Resource Files/systems/objectives_hud.inl"
   "Resource Files/systems/status_hud.inl"
+  "Resource Files/systems/shooting_system.inl"
   "Resource Files/systems/pause_menu.inl"
 )
 
@@ -99,3 +106,13 @@ add_custom_command(TARGET opengl POST_BUILD
 add_custom_command(TARGET opengl POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/assimp/build-mingw/bin/libassimp-6.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/libassimp-6.dll"
 )
+get_filename_component(CXX_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+foreach(MINGW_RUNTIME_DLL libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll)
+  if(EXISTS "${CXX_COMPILER_DIR}/${MINGW_RUNTIME_DLL}")
+    add_custom_command(TARGET opengl POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CXX_COMPILER_DIR}/${MINGW_RUNTIME_DLL}"
+      "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${MINGW_RUNTIME_DLL}"
+    )
+  endif()
+endforeach()

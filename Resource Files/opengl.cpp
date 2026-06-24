@@ -88,7 +88,7 @@ void updateFootstepAudio(bool running);
 void shutdownAudio();
 void closeCinematicPlayer();
 void showObjectiveBriefing();
-bool audioCommand(const std::string &command);
+bool audioCommand(const std::string &command, bool logFailures = true);
 unsigned int loadTextureFromJpeg(const wchar_t *path);
 struct HudTexture;
 HudTexture createTextTexture(const wchar_t *text, const wchar_t *fontName, float fontSize, int width, int height, const Gdiplus::Color &color);
@@ -314,11 +314,11 @@ std::vector<HorrorLight> horrorLights;
 const float SAVE_POINT_INTERACT_RADIUS = 1.45f;
 const float SHOTGUN_INTERACT_RADIUS = 1.35f;
 // Shared clear/fog color prevents a seam at the distant city horizon.
-const glm::vec3 FOG_COLOR(0.16f, 0.19f, 0.17f);
+const glm::vec3 FOG_COLOR(0.09f, 0.11f, 0.10f);
 // Distance/fog tuning: fog must become opaque before props are culled.
-const float renderDistance = 28.0f;
-const float fogStart = 2.5f;
-const float fogEnd = 22.0f;
+const float renderDistance = 24.0f;
+const float fogStart = 1.8f;
+const float fogEnd = 15.5f;
 const bool showLightCubes = false;
 
 float distanceToTransformedAabb(const glm::vec3 &point, const MeshData &mesh, const glm::mat4 &model)
@@ -856,6 +856,13 @@ void updateMenu(GLFWwindow *window, float deltaTime)
 
 int main()
 {
+    char exePathArr[MAX_PATH];
+    GetModuleFileNameA(NULL, exePathArr, MAX_PATH);
+    std::filesystem::path exePath(exePathArr);
+    const std::filesystem::path exeDir = exePath.parent_path();
+    const std::string exeDirString = exeDir.string();
+    if (!SetCurrentDirectoryA(exeDirString.c_str()))
+        std::cout << "Failed to set working directory to executable folder: " << exeDirString << std::endl;
 
     // Mostrar directorio de trabajo actual
     char cwd[MAX_PATH];
@@ -916,10 +923,7 @@ int main()
     glEnable(GL_MULTISAMPLE);
 
     // determine resource directory (where shaders/textures live)
-    char exePathArr[MAX_PATH];
-    GetModuleFileNameA(NULL, exePathArr, MAX_PATH);
-    std::filesystem::path exePath(exePathArr);
-    std::filesystem::path resourceDir = exePath.parent_path() / "Resource Files";
+    std::filesystem::path resourceDir = exeDir / "Resource Files";
     try
     {
         resourceDir = std::filesystem::weakly_canonical(resourceDir);
@@ -965,9 +969,9 @@ int main()
     // set basic material properties for Phong shading
     lightingShader.setFloat("material_shininess", 14.0f);
     lightingShader.setFloat("material_specularStrength", 0.18f);
-    lightingShader.setFloat("material_ambientStrength", 0.25f);
+    lightingShader.setFloat("material_ambientStrength", 0.20f);
     lightingShader.setVec3("fogColor", FOG_COLOR);
-    lightingShader.setFloat("fogDensity", 0.105f);
+    lightingShader.setFloat("fogDensity", 0.116f);
     lightingShader.setFloat("fogStart", fogStart);
     lightingShader.setFloat("fogEnd", fogEnd);
     lightingShader.setInt("fogEnabled", 1);
@@ -1190,8 +1194,7 @@ int main()
         {"strafe_left", "left strafe walking.fbx"},
         {"strafe_right", "right strafe walking.fbx"},
         {"turn_left", "left turn 90.fbx"},
-        {"turn_right", "right turn 90.fbx"},
-        {"jump", "jump.fbx"}};
+        {"turn_right", "right turn 90.fbx"}};
     for (const auto &entry : animFiles)
     {
         std::filesystem::path p = animDir / entry.second;
@@ -1783,12 +1786,12 @@ int main()
             // world material every frame so practical lights drive the scene.
             lightingShader.setFloat("material_shininess", 14.0f);
             lightingShader.setFloat("material_specularStrength", 0.18f);
-            lightingShader.setFloat("material_ambientStrength", 0.16f);
+            lightingShader.setFloat("material_ambientStrength", 0.12f);
 
             // Luz Direccional global del entorno
             lightingShader.setVec3("dirLight_direction", -0.2f, -1.0f, -0.3f);
             // Weak overcast fill: most contrast now comes from authored LightPos nodes.
-            lightingShader.setVec3("dirLight_color", 0.10f, 0.115f, 0.095f);
+            lightingShader.setVec3("dirLight_color", 0.08f, 0.09f, 0.075f);
             updateChestFlashlightLight(lightingShader);
 
             // Configuración de la luz puntal roja del punto de guardado
@@ -2543,4 +2546,3 @@ void scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
 #include "systems/navigation_system.inl"
 #include "systems/geometry_system.inl"
 #include "systems/model_animation_system.inl"
-

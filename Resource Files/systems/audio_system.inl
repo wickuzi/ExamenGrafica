@@ -1,11 +1,12 @@
-bool audioCommand(const std::string &command)
+bool audioCommand(const std::string &command, bool logFailures)
 {
     char errorText[256] = {};
     MCIERROR error = mciSendStringA(command.c_str(), nullptr, 0, nullptr);
     if (error != 0)
     {
         mciGetErrorStringA(error, errorText, sizeof(errorText));
-        std::cout << "Audio command failed: " << command << " -> " << errorText << std::endl;
+        if (logFailures)
+            std::cout << "Audio command failed: " << command << " -> " << errorText << std::endl;
         return false;
     }
     return true;
