@@ -143,7 +143,7 @@ pacman -S --needed mingw-w64-x86_64-glfw mingw-w64-x86_64-glew
 
 ## Español
 
-Guia rapida para compilar y ejecutar el proyecto en Windows.
+Guia rapida para compilar y ejecutar el proyecto en Windows 10.
 
 ### Ejecutar El Proyecto
 
